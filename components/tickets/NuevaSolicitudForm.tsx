@@ -86,66 +86,26 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
     setError('')
 
     try {
-      // Calcular SLA
-      const tramite  = tramites.find(t => t.id === tramiteId)
-      const slaDias  = tramite?.sla_dias_total || 5
-      const slaVence = new Date()
-      slaVence.setDate(slaVence.getDate() + slaDias)
-
-      // Generar número de ticket
-      const numero = `N3-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`
-
-      // Insertar ticket
-      const { data: ticket, error: ticketError } = await supabase
-        .from('tickets')
-        .insert({
-          numero,
-          tramite_id:   tramiteId,
-          estado:       'nuevo',
-          canal,
-          area_id:      areaId,
-          sla_vence_at: slaVence.toISOString(),
-        })
-        .select()
-        .single()
-
-      if (ticketError) throw ticketError
-
-      // Insertar partes
-      for (let i = 0; i < partes.length; i++) {
-        const p = partes[i]
-        if (!p.nombre_completo && !p.telefono) continue
-        await supabase.from('partes').insert({
-          ticket_id:        ticket.id,
-          rol:              p.rol,
-          nombre_completo:  p.nombre_completo || null,
-          curp:             p.curp || null,
-          rfc:              p.rfc || null,
-          telefono:         p.telefono || null,
-          email:            p.email || null,
-          es_persona_moral: p.es_persona_moral,
-          datos_adicionales: p.datos_adicionales,
-          orden:            i,
-        })
-      }
-
-      // Insertar checklist de documentos
-      const docTipos = tramite?.doc_tipos_config || []
-      for (const doc of docTipos) {
-        await supabase.from('documentos').insert({
-          ticket_id:   ticket.id,
-          doc_tipo_id: doc.id,
-          estado:      'pendiente',
-        })
-      }
-
-      // Registrar evento
-      await supabase.from('ticket_eventos').insert({
-        ticket_id:   ticket.id,
-        tipo:        'estado_cambio',
-        descripcion: `Ticket creado — canal: ${canal}`,
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tickets/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tramite_id:        tramiteId,
+          canal:             canal,
+          area_id:           areaId,
+          areas_adicionales: [],
+          partes:            partes
+            .filter(p => p.nombre_completo || p.telefono)
+            .map((p, i) => ({ ...p, orden: i })),
+        }),
       })
 
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Error al crear el ticket')
+      }
+
+      const ticket = await res.json()
       router.push(`/tickets/${ticket.id}`)
 
     } catch (err: any) {

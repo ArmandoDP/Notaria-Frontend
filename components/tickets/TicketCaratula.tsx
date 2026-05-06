@@ -114,8 +114,23 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
   }
 
   async function enviarRecordatorio() {
-    alert('WA recordatorio enviado (requiere backend Twilio activo)')
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/twilio/recordatorio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket_id: ticket.id }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      alert(`✅ Recordatorio enviado a ${data.telefono}`)
+      router.refresh()
+    } else {
+      alert(`Error: ${data.detail || 'No se pudo enviar'}`)
+    }
+  } catch (e) {
+    alert('Error conectando con el backend')
   }
+}
 
   const docEstadoColor: Record<string, { bg: string, color: string, label: string }> = {
     pendiente:     { bg: '#F3F4F6', color: '#6B7280', label: 'Pendiente'   },
