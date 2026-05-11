@@ -10,7 +10,8 @@ const navItems = [
   { href: '/nueva',     label: 'Nueva solicitud',  icon: '✦' },
   { section: 'Reportes' },
   { href: '/area',      label: 'Tablero por área', icon: '◧' },
-  { href: '/dashboard', label: 'Dashboard',        icon: '◉' },
+  { href: '/dashboard', label: 'Dashboard', icon: '◉' },
+  { href: '/folios',    label: 'Buscar folios',     icon: '⌕' },
 ]
 
 export default function Sidebar() {
@@ -58,7 +59,7 @@ export default function Sidebar() {
             </div>
             <div>
               <div className="text-[13px] font-semibold text-white leading-tight tracking-tight">Notaría No. 3</div>
-              <div className="text-[10px] leading-tight mt-0.5" style={{ color: 'rgba(255,255,255,0.28)' }}>Celaya, Guanajuato</div>
+              <div className="text-[10px] leading-tight mt-0.5" style={{ color: 'rgba(255,255,255,0.80)' }}>Celaya, Guanajuato</div>
             </div>
           </div>
         </div>
@@ -71,7 +72,7 @@ export default function Sidebar() {
             if ('section' in item) {
               return (
                 <div key={i} className="px-2 pt-4 pb-1.5 text-[9px] font-bold tracking-[2.5px] uppercase"
-                  style={{ color: 'rgba(255,255,255,0.16)' }}>
+                  style={{ color: 'rgba(255,255,255,255)' }}>
                   {item.section}
                 </div>
               )
@@ -82,12 +83,12 @@ export default function Sidebar() {
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] no-underline mb-0.5 transition-all duration-200"
                 style={{
                   background: active ? 'rgba(184,130,10,0.14)' : 'transparent',
-                  color:      active ? '#F0C040' : 'rgba(255,255,255,0.38)',
+                  color:      active ? '#F0C040' : 'rgba(255,255,255,0.80)',
                   fontWeight: active ? 600 : 400,
                   boxShadow:  active ? 'inset 0 0 0 1px rgba(184,130,10,0.2)' : 'none',
                 }}>
                 <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
-                  style={{ background: active ? '#F0C040' : 'rgba(255,255,255,0.2)', boxShadow: active ? '0 0 8px rgba(240,192,64,0.6)' : 'none' }} />
+                  style={{ background: active ? '#F0C040' : 'rgba(255,255,255,0.90)', boxShadow: active ? '0 0 8px rgba(240,192,64,0.6)' : 'none' }} />
                 {item.label}
                 {active && <span className="ml-auto text-[10px] opacity-40">◆</span>}
               </a>
@@ -96,7 +97,7 @@ export default function Sidebar() {
 
           {/* Sección Sistema */}
           <div className="px-2 pt-4 pb-1.5 text-[9px] font-bold tracking-[2.5px] uppercase"
-            style={{ color: 'rgba(255,255,255,0.16)' }}>
+            style={{ color: 'rgba(255,255,255,255)' }}>
             Sistema
           </div>
 
@@ -106,13 +107,13 @@ export default function Sidebar() {
             className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] mb-0.5 transition-all duration-200 border-none cursor-pointer"
             style={{
               background: tramitesExpanded ? 'rgba(184,130,10,0.08)' : 'transparent',
-              color:      tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.38)',
+              color:      tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.80)',
             }}>
             <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
-              style={{ background: tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.2)' }} />
+              style={{ background: tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.90)' }} />
             <span className="flex-1 text-left font-medium">Trámites</span>
             <span className="text-[10px] transition-transform duration-200"
-              style={{ transform: tramitesExpanded ? 'rotate(90deg)' : 'rotate(0deg)', color: 'rgba(255,255,255,0.3)' }}>
+              style={{ transform: tramitesExpanded ? 'rotate(90deg)' : 'rotate(0deg)', color: 'rgba(255,255,255,0.90)' }}>
               ›
             </span>
           </button>
@@ -126,7 +127,7 @@ export default function Sidebar() {
                   <a key={t.id} href={`/tramites/${t.id}`}
                     className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] no-underline transition-all duration-150"
                     style={{
-                      color:      active ? '#fff' : 'rgba(255,255,255,0.3)',
+                      color:      active ? '#fff' : 'rgba(255,255,255,0.80)',
                       background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
                       fontWeight: active ? 500 : 400,
                     }}>
@@ -144,7 +145,7 @@ export default function Sidebar() {
             className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] no-underline mb-0.5 transition-all duration-200"
             style={{
               background: pathname === '/config' ? 'rgba(184,130,10,0.14)' : 'transparent',
-              color:      pathname === '/config' ? '#F0C040' : 'rgba(255,255,255,0.38)',
+              color:      pathname === '/config' ? '#F0C040' : 'rgba(255,255,255,0.80)',
             }}>
             <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
               style={{ background: pathname === '/config' ? '#F0C040' : 'rgba(255,255,255,0.2)' }} />

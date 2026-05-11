@@ -9,11 +9,12 @@ export default async function TicketPage({ params }: { params: { id: string } })
     .from('tickets')
     .select(`
       *,
-      tramites_config(*),
-      areas(*),
-      partes(*),
-      documentos(*, doc_tipos_config(*)),
-      ticket_eventos(*)
+      tramites_config (*),
+      areas (*),
+      partes (*),
+      documentos (*, doc_tipos_config(*)),
+      ticket_eventos (*),
+      ticket_preguntas (*)
     `)
     .eq('id', params.id)
     .single()

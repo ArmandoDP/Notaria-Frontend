@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import NuevaSolicitudForm from '@/components/tickets/NuevaSolicitudForm'
+import NuevaSolicitudForm from '@/components/tickets/nueva-solicitud/NuevaSolicitudForm'
 
 export default async function NuevaSolicitudPage() {
   const supabase = await createClient()

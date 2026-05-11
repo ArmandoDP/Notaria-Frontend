@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow, isPast, format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import TabPreguntas from '@/components/tickets/TabPreguntas'
 
 const ESTADOS = [
   { id: 'nuevo',      label: 'Nuevo',      color: '#534AB7' },
@@ -27,11 +28,12 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
   const eventos   = ticket.ticket_eventos || []
 
   const [estado,      setEstado]      = useState(ticket.estado)
-  const [folioDBA,    setFolioDBA]    = useState(ticket.folio_dba || '')
+  const [folioDBA, setFolioDBA] = useState(ticket.folio_dba || '')
+  const [folioEscritura, setFolioEscritura] = useState(ticket.folio_escritura || '')
   const [notaDemora,  setNotaDemora]  = useState(ticket.nota_demora || '')
   const [modalDemora, setModalDemora] = useState(false)
   const [saving,      setSaving]      = useState(false)
-  const [activeTab,   setActiveTab]   = useState<'docs' | 'partes' | 'historial'>('docs')
+  const [activeTab, setActiveTab] = useState<'docs' | 'partes' | 'historial' | 'preguntas'>('docs')
 
   const vencido = isPast(new Date(ticket.sla_vence_at))
   const estadoActual = ESTADOS.find(e => e.id === estado)
@@ -81,6 +83,18 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
       ticket_id:   ticket.id,
       tipo:        'folio_dba',
       descripcion: `Folio DBA vinculado: ${folioDBA}`,
+    })
+    setSaving(false)
+  }
+
+  async function guardarFolioEscritura() {
+    if (!folioEscritura.trim()) return
+    setSaving(true)
+    await supabase.from('tickets').update({ folio_escritura: folioEscritura }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'folio_escritura',
+      descripcion: `Folio de escritura vinculado: ${folioEscritura}`,
     })
     setSaving(false)
   }
@@ -243,7 +257,8 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
             <div className="flex border-b" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
               {([
                 { id: 'docs',      label: `Documentos (${documentos.length})` },
-                { id: 'partes',    label: `Partes (${partes.length})` },
+                { id: 'partes', label: `Partes (${partes.length})` },
+                { id: 'preguntas', label: `Preguntas` },
                 { id: 'historial', label: `Historial (${eventos.length})` },
               ] as const).map(tab => (
                 <button key={tab.id} type="button"
@@ -355,6 +370,29 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
                 </div>
               )}
 
+              {/* Preguntas */}
+              {activeTab === 'preguntas' && (() => {
+                const preguntasConfig: string[] = tramite?.preguntas_clave || []
+                const respuestasGuardadas: any[] = ticket.ticket_preguntas || []
+                
+                const preguntasConRespuestas = preguntasConfig.map((p: string, i: number) => {
+                  const guardada = respuestasGuardadas.find((r: any) => r.orden === i)
+                  return {
+                    id:        guardada?.id,
+                    pregunta:  p,
+                    respuesta: guardada?.respuesta || '',
+                    orden:     i,
+                  }
+                })
+
+                return (
+                  <TabPreguntas
+                    ticketId={ticket.id}
+                    preguntas={preguntasConRespuestas}
+                  />
+                )
+              })()}
+
               {/* Historial */}
               {activeTab === 'historial' && (
                 <div className="flex flex-col gap-2">
@@ -382,26 +420,63 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
         {/* Sidebar derecho */}
         <div className="flex flex-col gap-4">
 
-          {/* Folio DBA */}
+          {/* Folios */}
           <div className="bg-white rounded-2xl p-4"
             style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-              Folio DBA
+              Folios
             </div>
-            <input
-              type="text"
-              value={folioDBA}
-              onChange={e => setFolioDBA(e.target.value)}
-              placeholder="DBA-2026-XXXX"
-              className="w-full px-3 py-2 rounded-xl text-[13px] font-mono outline-none mb-2"
-              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
-            />
-            <button type="button" onClick={guardarFolioDBA}
-              disabled={!folioDBA.trim() || saving}
-              className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
-              style={{ background: folioDBA.trim() ? '#111' : '#F0F0F0', color: folioDBA.trim() ? '#fff' : '#CCC' }}>
-              Vincular folio
-            </button>
+
+            {/* Folio DBA */}
+            <div className="mb-3">
+              <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>
+                Folio DBA
+              </label>
+              <input
+                type="text"
+                value={folioDBA}
+                onChange={e => setFolioDBA(e.target.value)}
+                placeholder="DBA-2026-XXXX"
+                className="w-full px-3 py-2 rounded-xl text-[13px] font-mono outline-none mb-2"
+                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
+              />
+              <button type="button" onClick={guardarFolioDBA}
+                disabled={!folioDBA.trim() || saving}
+                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+                style={{
+                  background: folioDBA.trim() ? '#111' : '#F0F0F0',
+                  color:      folioDBA.trim() ? '#fff' : '#CCC',
+                }}>
+                Vincular folio DBA
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginBottom: '12px' }} />
+
+            {/* Folio Escritura */}
+            <div>
+              <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>
+                Folio Escritura DBA
+              </label>
+              <input
+                type="text"
+                value={folioEscritura}
+                onChange={e => setFolioEscritura(e.target.value)}
+                placeholder="ESC-2026-XXXX"
+                className="w-full px-3 py-2 rounded-xl text-[13px] font-mono outline-none mb-2"
+                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
+              />
+              <button type="button" onClick={guardarFolioEscritura}
+                disabled={!folioEscritura.trim() || saving}
+                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+                style={{
+                  background: folioEscritura.trim() ? '#1B5FA5' : '#F0F0F0',
+                  color:      folioEscritura.trim() ? '#fff' : '#CCC',
+                }}>
+                Vincular folio escritura
+              </button>
+            </div>
           </div>
 
           {/* Recordatorio WA */}

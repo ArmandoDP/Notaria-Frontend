@@ -166,7 +166,12 @@ export default function TramiteDetallePage({ tramite, areas }: { tramite: any, a
       )}
 
       {tab === 'riesgos' && (
-        <TabRiesgos riesgos={data.riesgos || []} />
+        <TabRiesgos
+          riesgos={data.riesgos || []}
+          color={data.color_hex}
+          isAdmin={isAdmin}
+          onSave={v => guardar('riesgos', v)}
+        />
       )}
 
       {tab === 'config' && (
