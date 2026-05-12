@@ -98,7 +98,7 @@ export default function Sidebar() {
           {/* Sección Sistema */}
           <div className="px-2 pt-4 pb-1.5 text-[9px] font-bold tracking-[2.5px] uppercase"
             style={{ color: 'rgba(255,255,255,255)' }}>
-            Sistema
+            Configuración del Sistema
           </div>
 
           {/* Trámites — colapsable */}
@@ -149,7 +149,7 @@ export default function Sidebar() {
             }}>
             <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
               style={{ background: pathname === '/config' ? '#F0C040' : 'rgba(255,255,255,0.2)' }} />
-            Configuración
+            Configuración de Usuarios
           </a>
         </nav>
 

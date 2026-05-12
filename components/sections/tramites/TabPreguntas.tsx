@@ -20,14 +20,14 @@ export default function TabPreguntas({ preguntas, color, isAdmin, onSave }: Prop
             Preguntas que el agente debe hacer al cliente antes de crear el ticket
           </div>
         </div>
-        {isAdmin && (
+        {/* {isAdmin && (
           <button
             onClick={() => onSave([...preguntas, 'Nueva pregunta'])}
             className="px-3 py-1.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
             style={{ background: `${color}15`, color }}>
             + Agregar
           </button>
-        )}
+        )} */}
       </div>
 
       <div className="p-4 flex flex-col gap-2">
@@ -67,6 +67,14 @@ export default function TabPreguntas({ preguntas, color, isAdmin, onSave }: Prop
             )}
           </div>
         ))}
+        {isAdmin && (
+          <button
+            onClick={() => onSave([...preguntas, 'Nueva pregunta'])}
+            className="w-full py-3 rounded-2xl text-[13px] font-semibold cursor-pointer border-2 border-dashed transition-all mt-2"
+            style={{ borderColor: `${color}40`, color, background: `${color}05` }}>
+            + Agregar pregunta
+          </button>
+        )}
       </div>
     </div>
   )

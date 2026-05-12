@@ -130,7 +130,7 @@ export default function TramiteDetallePage({ tramite, areas }: { tramite: any, a
 
       {tab === 'partes' && (
         <TabPartes
-          key={data.doc_tipos_config?.length}  // ← esto fuerza re-render cuando cambia la cantidad
+          key={data.doc_tipos_config?.length}
           partes={data.requiere_partes || []}
           docTipos={docTipos}
           tramiteId={data.id}
@@ -142,15 +142,21 @@ export default function TramiteDetallePage({ tramite, areas }: { tramite: any, a
             ...prev,
             doc_tipos_config: [...(prev.doc_tipos_config || []), doc]
           }))}
+          onSavePartes={v => guardar('requiere_partes', v)}
         />
       )}
 
       {tab === 'operacion' && (
         <TabOperacion
           docs={docsOperacion}
+          partes={data.requiere_partes || []}
           color={data.color_hex}
           isAdmin={isAdmin}
-          onAdd={agregarDocumento}
+          tramiteId={data.id}
+          onAdd={doc => setData((prev: any) => ({
+            ...prev,
+            doc_tipos_config: [...(prev.doc_tipos_config || []), doc]
+          }))}
           onDelete={eliminarDocumento}
           onUpdate={actualizarDocumento}
         />
