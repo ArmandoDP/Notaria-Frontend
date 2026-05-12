@@ -165,6 +165,12 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
 
         <SeccionRiesgos riesgos={tramiteSeleccionado?.riesgos || []} />
 
+        <SeccionPreguntas
+          respuestas={respuestas}
+          color={tramiteSeleccionado?.color_hex || '#F0B429'}
+          onUpdate={updateRespuesta}
+        />
+        
         <SeccionPartes
           partes={partes}
           colorTramite={tramiteSeleccionado?.color_hex || '#666'}
@@ -174,11 +180,6 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
           onQuitar={i => setPartes(prev => prev.filter((_, idx) => idx !== i))}
         />
 
-        <SeccionPreguntas
-          respuestas={respuestas}
-          color={tramiteSeleccionado?.color_hex || '#F0B429'}
-          onUpdate={updateRespuesta}
-        />
 
 
         {error && (

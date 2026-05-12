@@ -1,6 +1,4 @@
-export type EstadoTicket =
-  | 'nuevo' | 'en_proceso' | 'pend_docs' | 'pend_pago'
-  | 'completo' | 'firma' | 'demorado' | 'entregado' | 'cancelado'
+export type EstadoTicket = 'nuevo' | 'asignado' | 'folio_dba' | 'escritura_dba' | 'cancelado' | 'entregado'
 
 export type CanalTicket =
   | 'telefono' | 'whatsapp' | 'mail' | 'front_desk'

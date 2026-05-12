@@ -7,13 +7,10 @@ import { formatDistanceToNow, isPast } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 const COLUMNAS = [
-  { id: 'nuevo',      label: 'Nuevo',       color: '#534AB7', bg: '#EEEDFE' },
-  { id: 'en_proceso', label: 'En proceso',  color: '#185FA5', bg: '#E6F1FB' },
-  { id: 'pend_docs',  label: 'Pend. docs',  color: '#854F0B', bg: '#FAEEDA' },
-  { id: 'firma',      label: 'Firma',       color: '#0F6E56', bg: '#E1F5EE' },
-  { id: 'completo',   label: 'Completo',    color: '#3B6D11', bg: '#EAF3DE' },
-  { id: 'demorado',   label: 'Demorado',    color: '#A32D2D', bg: '#FCEBEB' },
-  { id: 'entregado',  label: 'Entregado',   color: '#166534', bg: '#F0FDF4' },
+  { id: 'nuevo',         label: 'Nuevo',        color: '#534AB7', bg: 'rgba(83,74,183,0.1)'   },
+  { id: 'asignado',      label: 'Asignado',      color: '#185FA5', bg: 'rgba(24,95,165,0.1)'   },
+  { id: 'folio_dba',     label: 'Folio DBA',     color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
+  { id: 'escritura_dba', label: 'Escritura DBA', color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
 ]
 
 interface Props {
@@ -46,9 +43,15 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
           if (data) setTickets(prev => [data, ...prev])
         }
         if (payload.eventType === 'UPDATE') {
-          setTickets(prev => prev.map(t =>
-            t.id === payload.new.id ? { ...t, ...payload.new } : t
-          ))
+          // Recargar el ticket completo con sus relaciones
+          const { data } = await supabase
+            .from('tickets')
+            .select('*, tramites_config(nombre, color_hex), areas(nombre, color_hex), partes(*)')
+            .eq('id', payload.new.id)
+            .single()
+          if (data) {
+            setTickets(prev => prev.map(t => t.id === payload.new.id ? data : t))
+          }
         }
         if (payload.eventType === 'DELETE') {
           setTickets(prev => prev.filter(t => t.id !== payload.old.id))
@@ -67,10 +70,10 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
   })
 
   // Stats
-  const activos   = tickets.filter(t => !['entregado','cancelado'].includes(t.estado)).length
-  const preDBA    = tickets.filter(t => !t.folio_dba && !['cancelado','entregado'].includes(t.estado)).length
-  const demorados = tickets.filter(t => t.estado === 'demorado').length
-  const entregados = tickets.filter(t => t.estado === 'entregado').length
+  const activos    = tickets.filter(t => t.estado !== 'cancelado').length
+  const sinFolio   = tickets.filter(t => !t.folio_dba).length
+  const foliosDBA  = tickets.filter(t => t.estado === 'folio_dba').length
+  const escrituras = tickets.filter(t => t.estado === 'escritura_dba').length
 
   return (
     <div>
@@ -78,9 +81,9 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
           { label: 'Activos',    val: activos,   sub: 'En sistema',        color: '#534AB7', bg: 'rgba(83,74,183,0.06)'  },
-          { label: 'Pre-DBA',    val: preDBA,    sub: 'Sin folio asignado', color: '#92650A', bg: 'rgba(184,130,10,0.06)' },
-          { label: 'Demorados',  val: demorados, sub: 'Requieren atención', color: '#A32D2D', bg: 'rgba(226,75,74,0.06)'  },
-          { label: 'Entregados', val: entregados,sub: 'Total histórico',    color: '#166534', bg: 'rgba(99,153,34,0.06)'  },
+          { label: 'Sin folio',  val: sinFolio,  sub: 'Sin folio asignado', color: '#92650A', bg: 'rgba(184,130,10,0.06)' },
+          { label: 'Folios DBA', val: foliosDBA, sub: 'En proceso',         color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
+          { label: 'Escrituras', val: escrituras,sub: 'En proceso',         color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
         ].map(s => (
           <div key={s.label}
             className="rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5"

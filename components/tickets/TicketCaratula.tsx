@@ -8,13 +8,10 @@ import { es } from 'date-fns/locale'
 import TabPreguntas from '@/components/tickets/TabPreguntas'
 
 const ESTADOS = [
-  { id: 'nuevo',      label: 'Nuevo',      color: '#534AB7' },
-  { id: 'en_proceso', label: 'En proceso', color: '#185FA5' },
-  { id: 'pend_docs',  label: 'Pend. docs', color: '#854F0B' },
-  { id: 'firma',      label: 'Firma',      color: '#0F6E56' },
-  { id: 'completo',   label: 'Completo',   color: '#3B6D11' },
-  { id: 'demorado',   label: 'Demorado',   color: '#A32D2D' },
-  { id: 'entregado',  label: 'Entregado',  color: '#166534' },
+  { id: 'nuevo',         label: 'Nuevo',        color: '#534AB7' },
+  { id: 'asignado',      label: 'Asignado',      color: '#185FA5' },
+  { id: 'folio_dba',     label: 'Folio DBA',     color: '#854F0B' },
+  { id: 'escritura_dba', label: 'Escritura DBA', color: '#0F6E56' },
 ]
 
 export default function TicketCaratula({ ticket }: { ticket: any }) {
@@ -35,6 +32,9 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
   const [saving,      setSaving]      = useState(false)
   const [activeTab, setActiveTab] = useState<'docs' | 'partes' | 'historial' | 'preguntas'>('docs')
 
+  const [folioDBAVinculado,      setFolioDBAVinculado]      = useState(!!ticket.folio_dba)
+  const [folioEscrituraVinculado, setFolioEscrituraVinculado] = useState(!!ticket.folio_escritura)
+
   const vencido = isPast(new Date(ticket.sla_vence_at))
   const estadoActual = ESTADOS.find(e => e.id === estado)
 
@@ -46,10 +46,6 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
     : 0
 
   async function cambiarEstado(nuevoEstado: string) {
-    if (nuevoEstado === 'demorado') {
-      setModalDemora(true)
-      return
-    }
     setSaving(true)
     await supabase.from('tickets').update({ estado: nuevoEstado }).eq('id', ticket.id)
     await supabase.from('ticket_eventos').insert({
@@ -59,6 +55,7 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
     })
     setEstado(nuevoEstado)
     setSaving(false)
+    router.refresh()
   }
 
   async function guardarDemora() {
@@ -84,6 +81,7 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
       tipo:        'folio_dba',
       descripcion: `Folio DBA vinculado: ${folioDBA}`,
     })
+    setFolioDBAVinculado(true)
     setSaving(false)
   }
 
@@ -96,7 +94,34 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
       tipo:        'folio_escritura',
       descripcion: `Folio de escritura vinculado: ${folioEscritura}`,
     })
+    setFolioEscrituraVinculado(true)
     setSaving(false)
+  }
+
+  async function cambiarEstadoFolioDBA() {
+    setSaving(true)
+    await supabase.from('tickets').update({ estado: 'folio_dba' }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'estado_cambio',
+      descripcion: `Estado actualizado a Folio DBA`,
+    })
+    setEstado('folio_dba')
+    setSaving(false)
+    router.refresh()
+  }
+
+  async function cambiarEstadoEscritura() {
+    setSaving(true)
+    await supabase.from('tickets').update({ estado: 'escritura_dba' }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'estado_cambio',
+      descripcion: `Estado actualizado a Escritura DBA`,
+    })
+    setEstado('escritura_dba')
+    setSaving(false)
+    router.refresh()
   }
   
     async function subirDocumento(docId: string, docTipoId: string, parteId: string | null, archivo: File) {
@@ -232,12 +257,12 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
             <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
               Estado del ticket
             </div>
-            <div className="flex flex-wrap gap-2">
-              {ESTADOS.map(e => (
+            <div className="flex gap-2">
+              {ESTADOS.slice(0, 2).map(e => (
                 <button key={e.id} type="button"
                   onClick={() => cambiarEstado(e.id)}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-all cursor-pointer border-none"
+                  className="flex-1 px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-all cursor-pointer border-none"
                   style={{
                     background: estado === e.id ? e.color : `${e.color}14`,
                     color:      estado === e.id ? '#fff' : e.color,
@@ -428,10 +453,16 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
             </div>
 
             {/* Folio DBA */}
-            <div className="mb-3">
+            <div className="mb-4">
               <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>
                 Folio DBA
               </label>
+              {folioDBA && (
+                <div className="text-[12px] font-mono font-bold mb-2 px-3 py-1.5 rounded-lg"
+                  style={{ background: '#FEF3C7', color: '#854F0B' }}>
+                  {folioDBA}
+                </div>
+              )}
               <input
                 type="text"
                 value={folioDBA}
@@ -442,23 +473,37 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
               />
               <button type="button" onClick={guardarFolioDBA}
                 disabled={!folioDBA.trim() || saving}
-                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all mb-2"
                 style={{
                   background: folioDBA.trim() ? '#111' : '#F0F0F0',
                   color:      folioDBA.trim() ? '#fff' : '#CCC',
                 }}>
                 Vincular folio DBA
               </button>
+              {folioDBAVinculado && estado !== 'folio_dba' && estado !== 'escritura_dba' && (
+                <button type="button" onClick={cambiarEstadoFolioDBA}
+                  disabled={saving}
+                  className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none transition-all"
+                  style={{ background: '#FEF3C7', color: '#854F0B', border: '1px solid #F0B429' }}>
+                  → Cambiar estado a Folio DBA
+                </button>
+              )}
             </div>
 
             {/* Divider */}
-            <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginBottom: '12px' }} />
+            <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginBottom: '16px' }} />
 
             {/* Folio Escritura */}
             <div>
               <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>
-                Folio Escritura DBA
+                Folio Escritura
               </label>
+              {folioEscritura && (
+                <div className="text-[12px] font-mono font-bold mb-2 px-3 py-1.5 rounded-lg"
+                  style={{ background: '#D1FAE5', color: '#0F6E56' }}>
+                  {folioEscritura}
+                </div>
+              )}
               <input
                 type="text"
                 value={folioEscritura}
@@ -469,13 +514,21 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
               />
               <button type="button" onClick={guardarFolioEscritura}
                 disabled={!folioEscritura.trim() || saving}
-                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all mb-2"
                 style={{
                   background: folioEscritura.trim() ? '#1B5FA5' : '#F0F0F0',
                   color:      folioEscritura.trim() ? '#fff' : '#CCC',
                 }}>
                 Vincular folio escritura
               </button>
+              {folioEscrituraVinculado && estado !== 'escritura_dba' && (
+                <button type="button" onClick={cambiarEstadoEscritura}
+                  disabled={saving}
+                  className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none transition-all"
+                  style={{ background: '#D1FAE5', color: '#0F6E56', border: '1px solid #86EFAC' }}>
+                  → Cambiar estado a Escritura DBA
+                </button>
+              )}
             </div>
           </div>
 
