@@ -139,5 +139,5 @@ export interface TicketEvento {
   descripcion: string
   usuario_id:  string | null
   metadata:    Record<string, any>
-  created_at:  string
+  created_at:  string+
 }

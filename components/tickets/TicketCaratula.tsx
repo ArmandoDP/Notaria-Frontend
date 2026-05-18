@@ -302,71 +302,146 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
             <div className="p-4">
 
               {/* Documentos */}
-              {activeTab === 'docs' && (
-                <div className="flex flex-col gap-2">
-                  {documentos.length === 0 && (
-                    <p className="text-[13px] text-center py-4" style={{ color: '#CCC' }}>
-                      Sin documentos configurados
-                    </p>
-                  )}
-                  {documentos.map((doc: any) => {
-                    const est = docEstadoColor[doc.estado] || docEstadoColor.pendiente
-                    return (
-                      <div key={doc.id} className="flex items-center justify-between gap-3 p-3 rounded-xl"
-                        style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.05)' }}>
-                        <div className="flex-1 min-w-0">
+              {activeTab === 'docs' && (() => {
+                // Obtener partes del trámite para agrupar
+                const partesConfig: any[] = tramite?.requiere_partes || []
+                
+                // Agrupar documentos por para_rol
+                const docsPartes = partesConfig.map((parte: any) => ({
+                  parte,
+                  docs: documentos.filter((d: any) => d.doc_tipos_config?.para_rol === parte.rol),
+                })).filter(g => g.docs.length > 0)
+
+                // Docs de operación (sin parte o con operacion)
+                const docsOperacion = documentos.filter((d: any) =>
+                  !d.doc_tipos_config?.para_rol ||
+                  d.doc_tipos_config?.para_rol === 'operacion' ||
+                  d.doc_tipos_config?.para_rol === 'inmueble'
+                )
+
+                // Docs sin clasificar (por si acaso)
+                const rolesConfig = partesConfig.map((p: any) => p.rol)
+                const docsSinClasificar = documentos.filter((d: any) => {
+                  const rol = d.doc_tipos_config?.para_rol
+                  return rol && rol !== 'operacion' && rol !== 'inmueble' && !rolesConfig.includes(rol)
+                })
+
+                const renderDoc = (doc: any) => {
+                  const est = docEstadoColor[doc.estado] || docEstadoColor.pendiente
+                  return (
+                    <div key={doc.id} className="flex items-center justify-between gap-3 p-3 rounded-xl"
+                      style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.05)' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ background: doc.doc_tipos_config?.obligatorio ? '#E24B4A' : '#9CA3AF' }} />
                           <div className="text-[12.5px] font-semibold" style={{ color: '#111' }}>
                             {doc.doc_tipos_config?.nombre}
                           </div>
-                          {doc.alerta_ia && (
-                            <div className="text-[11px] mt-0.5" style={{ color: '#A32D2D' }}>
-                              ⚠ {doc.alerta_ia}
-                            </div>
-                          )}
-                          {doc.datos_ocr && Object.keys(doc.datos_ocr).length > 0 && (
-                            <div className="text-[10px] mt-0.5" style={{ color: '#9C9890' }}>
-                              OCR: {Object.entries(doc.datos_ocr).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                            </div>
-                          )}
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        {doc.doc_tipos_config?.alerta_descripcion && (
+                          <div className="text-[11px] mt-0.5 ml-3" style={{ color: '#9C9890' }}>
+                            {doc.doc_tipos_config.alerta_descripcion}
+                          </div>
+                        )}
+                        {doc.datos_ocr && Object.keys(doc.datos_ocr).length > 0 && (
+                          <div className="text-[10px] mt-0.5 ml-3" style={{ color: '#9C9890' }}>
+                            OCR: {Object.entries(doc.datos_ocr).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold"
-                            style={{ background: est.bg, color: est.color }}>
-                            {est.label}
+                          style={{ background: est.bg, color: est.color }}>
+                          {est.label}
                         </span>
-
-                        {/* Botón subir archivo */}
-                        {doc.estado === 'pendiente' || doc.estado === 'recibido' ? (
-                            <label className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all"
+                        {(doc.estado === 'pendiente' || doc.estado === 'recibido') && (
+                          <label className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all"
                             style={{ background: '#E6F1FB', color: '#185FA5' }}>
                             Subir
-                            <input
-                                type="file"
-                                className="hidden"
-                                accept=".jpg,.jpeg,.png,.webp,.pdf"
-                                onChange={e => {
+                            <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.pdf"
+                              onChange={e => {
                                 const archivo = e.target.files?.[0]
                                 if (archivo) subirDocumento(doc.id, doc.doc_tipo_id, doc.parte_id, archivo)
-                                }}
-                            />
-                            </label>
-                        ) : null}
-
-                        {/* Botón validar */}
-                        {doc.estado === 'ocr_procesado' || doc.estado === 'recibido' ? (
-                            <button type="button"
-                            onClick={() => validarDocumento(doc.id)}
+                              }} />
+                          </label>
+                        )}
+                        {(doc.estado === 'ocr_procesado' || doc.estado === 'recibido') && (
+                          <button type="button" onClick={() => validarDocumento(doc.id)}
                             className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none transition-all"
                             style={{ background: '#EAF3DE', color: '#3B6D11' }}>
                             Validar
-                            </button>
-                        ) : null}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="flex flex-col gap-4">
+                    {documentos.length === 0 && (
+                      <p className="text-[13px] text-center py-4" style={{ color: '#CCC' }}>
+                        Sin documentos configurados
+                      </p>
+                    )}
+
+                    {/* Documentos por parte */}
+                    {docsPartes.map(({ parte, docs }) => (
+                      <div key={parte.rol}>
+                        {/* Header de la parte */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
+                            style={{ background: parte.color || tramite?.color_hex || '#666' }}>
+                            {parte.avatar || parte.rol.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-[12px] font-bold capitalize" style={{ color: '#333' }}>
+                            {parte.rol.replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-[10px]" style={{ color: '#9C9890' }}>
+                            {docs.filter((d: any) => d.estado === 'validado').length}/{docs.length} validados
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-2 ml-2">
+                          {docs.map(renderDoc)}
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                    ))}
+
+                    {/* Docs sin clasificar */}
+                    {docsSinClasificar.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
+                            style={{ background: '#6B7280' }}>
+                            ?
+                          </div>
+                          <span className="text-[12px] font-bold" style={{ color: '#333' }}>Sin clasificar</span>
+                        </div>
+                        <div className="flex flex-col gap-2 ml-2">
+                          {docsSinClasificar.map(renderDoc)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Docs de operación */}
+                    {docsOperacion.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
+                            style={{ background: tramite?.color_hex || '#666' }}>
+                            OP
+                          </div>
+                          <span className="text-[12px] font-bold" style={{ color: '#333' }}>Documentos de la operación</span>
+                        </div>
+                        <div className="flex flex-col gap-2 ml-2">
+                          {docsOperacion.map(renderDoc)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Partes */}
               {activeTab === 'partes' && (

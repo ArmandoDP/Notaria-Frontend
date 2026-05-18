@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react'
 const navItems = [
   { section: 'Operación' },
   { href: '/',          label: 'Kanban',           icon: '▦' },
-  { href: '/nueva',     label: 'Nueva solicitud',  icon: '✦' },
+  { href: '/nueva', label: 'Nueva solicitud', icon: '✦' },
+  { href: '/usuarios', label: 'Usuarios y permisos', icon: '👥' },
   { section: 'Reportes' },
   { href: '/area',      label: 'Tablero por área', icon: '◧' },
   { href: '/dashboard', label: 'Dashboard', icon: '◉' },

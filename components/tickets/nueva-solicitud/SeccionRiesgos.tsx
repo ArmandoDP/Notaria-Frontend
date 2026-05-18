@@ -10,6 +10,12 @@ const TIPO_COLOR: Record<string, { bg: string, color: string }> = {
   'SLA automático':     { bg: '#EDE9FE', color: '#4C1D95' },
 }
 
+const CATEGORIA_CONFIG: Record<string, { label: string, bg: string, color: string, icon: string }> = {
+  riesgo:        { label: 'Riesgo',        bg: '#FEE2E2', color: '#991B1B', icon: '⚠' },
+  alerta:        { label: 'Alerta',        bg: '#FEF3C7', color: '#92400E', icon: '🔔' },
+  recomendacion: { label: 'Recomendación', bg: '#D1FAE5', color: '#065F46', icon: '💡' },
+}
+
 interface Props {
   riesgos: any[]
 }
@@ -17,43 +23,76 @@ interface Props {
 export default function SeccionRiesgos({ riesgos }: Props) {
   if (!riesgos || riesgos.length === 0) return null
 
+  const porCategoria = {
+    riesgo:        riesgos.filter(r => r.categoria === 'riesgo' || !r.categoria),
+    alerta:        riesgos.filter(r => r.categoria === 'alerta'),
+    recomendacion: riesgos.filter(r => r.categoria === 'recomendacion'),
+  }
+
+  const renderItem = (r: any, i: number) => {
+    const nivel = NIVEL_COLOR[r.nivel] || NIVEL_COLOR.bajo
+    const tipo  = TIPO_COLOR[r.tipo]   || { bg: '#F3F4F6', color: '#6B7280' }
+
+    return (
+      <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
+        style={{ background: `${nivel.bg}60`, border: `1px solid ${nivel.bg}` }}>
+        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase flex-shrink-0 mt-0.5"
+          style={{ background: nivel.bg, color: nivel.color }}>
+          {r.nivel}
+        </span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <span className="text-[12.5px] font-bold" style={{ color: '#111' }}>{r.titulo}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+              style={{ background: tipo.bg, color: tipo.color }}>
+              {r.tipo}
+            </span>
+          </div>
+          {(r.desc || r.descripcion) && (
+            <p className="text-[11.5px] leading-relaxed" style={{ color: '#666' }}>
+              {r.desc || r.descripcion}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const secciones = [
+    { key: 'riesgo',        items: porCategoria.riesgo        },
+    { key: 'alerta',        items: porCategoria.alerta        },
+    { key: 'recomendacion', items: porCategoria.recomendacion },
+  ].filter(s => s.items.length > 0)
+
+  if (secciones.length === 0) return null
+
   return (
     <div className="bg-white rounded-2xl overflow-hidden"
       style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+
       <div className="px-5 py-3"
         style={{ background: '#FAFAF8', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
         <div className="text-[13px] font-bold" style={{ color: '#111' }}>
-          ⚠ Riesgos y alertas del trámite
+          Riesgos, alertas y recomendaciones
         </div>
         <div className="text-[11px] mt-0.5" style={{ color: '#9C9890' }}>
           Considera estos puntos antes de proceder — solo informativo
         </div>
       </div>
-      <div className="p-4 flex flex-col gap-2">
-        {riesgos.map((r: any, i: number) => {
-          const nivel = NIVEL_COLOR[r.nivel] || NIVEL_COLOR.bajo
-          const tipo  = TIPO_COLOR[r.tipo]   || { bg: '#F3F4F6', color: '#6B7280' }
+
+      <div className="p-4 flex flex-col gap-4">
+        {secciones.map(({ key, items }) => {
+          const cfg = CATEGORIA_CONFIG[key]
           return (
-            <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
-              style={{ background: `${nivel.bg}60`, border: `1px solid ${nivel.bg}` }}>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase flex-shrink-0 mt-0.5"
-                style={{ background: nivel.bg, color: nivel.color }}>
-                {r.nivel}
-              </span>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                  <span className="text-[12.5px] font-bold" style={{ color: '#111' }}>{r.titulo}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ background: tipo.bg, color: tipo.color }}>
-                    {r.tipo}
-                  </span>
-                </div>
-                {(r.desc || r.descripcion) && (
-                  <p className="text-[11.5px] leading-relaxed" style={{ color: '#666' }}>
-                    {r.desc || r.descripcion}
-                  </p>
-                )}
+            <div key={key} className="flex flex-col gap-2">
+              {/* Header sección */}
+              <div className="flex items-center gap-2">
+                <span className="text-[13px]">{cfg.icon}</span>
+                <span className="text-[12px] font-bold" style={{ color: cfg.color }}>
+                  {cfg.label}s ({items.length})
+                </span>
               </div>
+              {items.map((r, i) => renderItem(r, i))}
             </div>
           )
         })}
