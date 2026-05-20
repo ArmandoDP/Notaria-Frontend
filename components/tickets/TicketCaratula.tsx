@@ -698,6 +698,41 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
             </div>
           </div>
 
+          {/* Descargar expediente */}
+          <div className="bg-white rounded-2xl p-4"
+            style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
+              Expediente
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/docs/descargar-expediente/${ticket.id}`)
+                  if (!res.ok) {
+                    const err = await res.json()
+                    alert(`❌ ${err.detail}`)
+                    return
+                  }
+                  const blob = await res.blob()
+                  const url  = URL.createObjectURL(blob)
+                  const a    = document.createElement('a')
+                  a.href     = url
+                  a.download = `${ticket.numero}.zip`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                } catch {
+                  alert('Error al generar el expediente')
+                }
+              }}
+              className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+              style={{ background: '#111', color: '#fff' }}>
+              📦 Descargar expediente ZIP
+            </button>
+            <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
+              Requiere todos los documentos obligatorios subidos
+            </div>
+          </div>
+
           {/* Recordatorio WA */}
           <div className="bg-white rounded-2xl p-4"
             style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
