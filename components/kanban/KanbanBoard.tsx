@@ -7,10 +7,10 @@ import { formatDistanceToNow, isPast } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 const COLUMNAS = [
-  { id: 'nuevo',         label: 'Nuevo',        color: '#534AB7', bg: 'rgba(83,74,183,0.1)'   },
-  { id: 'asignado',      label: 'Asignado',      color: '#185FA5', bg: 'rgba(24,95,165,0.1)'   },
-  { id: 'folio_dba',     label: 'Folio DBA',     color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
-  { id: 'escritura_dba', label: 'Escritura DBA', color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
+  { id: 'nuevo',             label: 'Nuevo',              color: '#534AB7', bg: 'rgba(83,74,183,0.1)'  },
+  { id: 'asignado',          label: 'Asignado',            color: '#185FA5', bg: 'rgba(24,95,165,0.1)'  },
+  { id: 'folio_dba',         label: 'Folio DBA',           color: '#854F0B', bg: 'rgba(133,79,11,0.1)'  },
+  { id: 'escritura_dba',     label: 'Escritura DBA',       color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'  },
 ]
 
 interface Props {

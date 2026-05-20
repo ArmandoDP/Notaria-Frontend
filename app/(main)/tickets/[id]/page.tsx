@@ -5,9 +5,14 @@ import TicketCaratula from '@/components/tickets/TicketCaratula'
 export default async function TicketPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
 
-  const { data: ticket } = await supabase
-    .from('tickets')
-    .select(`
+  const { data: conversacion } = await supabase
+  .from('conversaciones_wa')
+  .select('id')
+  .eq('ticket_id', params.id)
+  .single()
+
+  const [{ data: ticket }, { data: tramites }, { data: areas }] = await Promise.all([
+    supabase.from('tickets').select(`
       *,
       tramites_config (*),
       areas (*),
@@ -15,11 +20,12 @@ export default async function TicketPage({ params }: { params: { id: string } })
       documentos (*, doc_tipos_config(*)),
       ticket_eventos (*),
       ticket_preguntas (*)
-    `)
-    .eq('id', params.id)
-    .single()
+    `).eq('id', params.id).single(),
+    supabase.from('tramites_config').select('id, nombre, color_hex').eq('activo', true).order('orden'),
+    supabase.from('areas').select('id, nombre, color_hex').eq('activa', true).order('orden'),
+  ])
 
   if (!ticket) notFound()
 
-  return <TicketCaratula ticket={ticket} />
+  return <TicketCaratula ticket={ticket} tramites={tramites || []} areas={areas || []} conversacionId={conversacion?.id || null} />
 }

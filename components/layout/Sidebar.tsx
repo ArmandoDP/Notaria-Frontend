@@ -8,11 +8,12 @@ const navItems = [
   { section: 'Operación' },
   { href: '/',          label: 'Kanban',           icon: '▦' },
   { href: '/nueva', label: 'Nueva solicitud', icon: '✦' },
-  { href: '/usuarios', label: 'Usuarios y permisos', icon: '👥' },
+  { href: '/chats', label: 'Chats WhatsApp', icon: '💬' },
   { section: 'Reportes' },
   { href: '/area',      label: 'Tablero por área', icon: '◧' },
   { href: '/dashboard', label: 'Dashboard', icon: '◉' },
-  { href: '/folios',    label: 'Buscar folios',     icon: '⌕' },
+  { href: '/folios', label: 'Buscar folios', icon: '⌕' },
+  { href: '/usuarios', label: 'Usuarios y permisos', icon: '👥' },
 ]
 
 export default function Sidebar() {

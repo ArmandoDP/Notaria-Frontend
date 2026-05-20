@@ -8,13 +8,13 @@ import { es } from 'date-fns/locale'
 import TabPreguntas from '@/components/tickets/TabPreguntas'
 
 const ESTADOS = [
-  { id: 'nuevo',         label: 'Nuevo',        color: '#534AB7' },
-  { id: 'asignado',      label: 'Asignado',      color: '#185FA5' },
-  { id: 'folio_dba',     label: 'Folio DBA',     color: '#854F0B' },
-  { id: 'escritura_dba', label: 'Escritura DBA', color: '#0F6E56' },
+  { id: 'nuevo',             label: 'Nuevo',             color: '#534AB7' },
+  { id: 'asignado',          label: 'Asignado',           color: '#185FA5' },
+  { id: 'folio_dba',         label: 'Folio DBA',          color: '#854F0B' },
+  { id: 'escritura_dba',     label: 'Escritura DBA',      color: '#0F6E56' },
 ]
 
-export default function TicketCaratula({ ticket }: { ticket: any }) {
+export default function TicketCaratula({ ticket, tramites, areas, conversacionId }: { ticket: any; tramites: any[]; areas: any[]; conversacionId:  string | null }) {
   const router   = useRouter()
   const supabase = createClient()
 
@@ -34,6 +34,10 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
 
   const [folioDBAVinculado,      setFolioDBAVinculado]      = useState(!!ticket.folio_dba)
   const [folioEscrituraVinculado, setFolioEscrituraVinculado] = useState(!!ticket.folio_escritura)
+
+  const [reasignando,    setReasignando]    = useState(false)
+  const [nuevoTramiteId, setNuevoTramiteId] = useState(ticket.tramite_id)
+  const [nuevoAreaId,    setNuevoAreaId]    = useState(ticket.area_id)
 
   const vencido = isPast(new Date(ticket.sla_vence_at))
   const estadoActual = ESTADOS.find(e => e.id === estado)
@@ -123,7 +127,24 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
     setSaving(false)
     router.refresh()
   }
-  
+
+  async function guardarReasignacion() {
+    setSaving(true)
+    await supabase.from('tickets').update({
+      tramite_id: nuevoTramiteId,
+      area_id:    nuevoAreaId,
+      estado:     'asignado',  // ← automático
+    }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'reasignacion',
+      descripcion: `Ticket reasignado y asignado al área correspondiente`,
+    })
+    setSaving(false)
+    setReasignando(false)
+    router.refresh()
+  }
+
     async function subirDocumento(docId: string, docTipoId: string, parteId: string | null, archivo: File) {
         const formData = new FormData()
         formData.append('ticket_id',   ticket.id)
@@ -605,6 +626,76 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
                 </button>
               )}
             </div>
+
+            {/* Link de carga pública */}
+            <div className="bg-white rounded-2xl p-4"
+              style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
+                Link de carga
+              </div>
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/upload/${ticket.upload_token}`
+                  navigator.clipboard.writeText(url)
+                  alert('✅ Link copiado al portapapeles')
+                }}
+                className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+                style={{ background: '#E6F1FB', color: '#185FA5' }}>
+                📋 Copiar link de carga
+              </button>
+              <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
+                Comparte este link con el cliente para que suba sus documentos
+              </div>
+            </div>
+            {/* Reasignar */}
+            <div className="bg-white rounded-2xl p-4"
+              style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#9C9890' }}>
+                  Trámite y área
+                </div>
+                <button onClick={() => setReasignando(!reasignando)}
+                  className="text-[11px] cursor-pointer border-none bg-transparent font-medium"
+                  style={{ color: reasignando ? '#E24B4A' : '#1B5FA5' }}>
+                  {reasignando ? 'Cancelar' : 'Reasignar'}
+                </button>
+              </div>
+
+              {reasignando ? (
+                <div className="flex flex-col gap-2">
+                  <select value={nuevoTramiteId}
+                    onChange={e => setNuevoTramiteId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
+                    style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
+                    {tramites.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </select>
+                  <select value={nuevoAreaId}
+                    onChange={e => setNuevoAreaId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
+                    style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
+                    {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                  <button onClick={guardarReasignacion} disabled={saving}
+                    className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none"
+                    style={{ background: '#111', color: '#fff' }}>
+                    Guardar reasignación
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: tramite?.color_hex || '#666' }} />
+                    <span className="text-[12.5px] font-medium" style={{ color: '#111' }}>
+                      {tramite?.nombre || '—'}
+                    </span>
+                  </div>
+                  <div className="text-[11px]" style={{ color: '#9C9890' }}>
+                    {area?.nombre || '—'}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Recordatorio WA */}
@@ -637,6 +728,16 @@ export default function TicketCaratula({ ticket }: { ticket: any }) {
                   <span className="font-medium" style={{ color: '#333' }}>{r.value}</span>
                 </div>
               ))}
+              {conversacionId && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <a href={`/chats?conv=${conversacionId}`}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline transition-all"
+                    style={{ background: '#E9F7EF', color: '#1A6B3C' }}>
+                    <span>💬</span>
+                    Ver conversación WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
