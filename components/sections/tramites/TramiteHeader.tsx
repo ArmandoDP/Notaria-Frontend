@@ -22,8 +22,14 @@ export default function TramiteHeader({ data, isAdmin, saved, onSave }: Props) {
           <input
             defaultValue={data.nombre}
             onBlur={e => onSave('nombre', e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur()
+              }
+            }}
             className="text-[22px] font-bold text-white bg-transparent border-none outline-none w-full tracking-tight mb-2"
-            style={{ fontFamily: 'inherit' }}
+            style={{ fontFamily: 'inherit', borderBottom: '1px solid rgba(255,255,255,0.3)' }}
+            placeholder="Nombre del trámite..."
           />
         ) : (
           <h1 className="text-[22px] font-bold text-white tracking-tight mb-2">{data.nombre}</h1>

@@ -12,7 +12,7 @@ export default async function UploadPage({ params }: { params: { token: string }
       tramites_config (nombre, color_hex, descripcion, requiere_partes),
       partes (nombre_completo, rol, orden),
       documentos (
-        id, estado, doc_tipo_id,
+        id, estado, doc_tipo_id, archivo_url, datos_ocr,
         doc_tipos_config (nombre, obligatorio, para_rol, descripcion_vigencia, alerta_descripcion)
       )
     `)

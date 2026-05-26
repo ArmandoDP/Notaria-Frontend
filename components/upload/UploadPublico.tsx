@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   ticket: any
@@ -8,15 +9,36 @@ interface Props {
 }
 
 export default function UploadPublico({ ticket, token }: Props) {
+  const supabase   = createClient()
   const tramite    = ticket.tramites_config
   const partes     = (ticket.partes || []).sort((a: any, b: any) => a.orden - b.orden)
-  const documentos = ticket.documentos || []
 
-  const [subiendo, setSubiendo] = useState<string | null>(null)
-  const [subidos,  setSubidos]  = useState<Record<string, boolean>>({})
-  const [errores,  setErrores]  = useState<Record<string, string>>({})
+  const [documentos, setDocumentos] = useState(ticket.documentos || [])
+  const [subiendo,   setSubiendo]   = useState<string | null>(null)
+  const [subidos,    setSubidos]    = useState<Record<string, boolean>>({})
+  const [errores,    setErrores]    = useState<Record<string, string>>({})
 
   const partesConfig: any[] = tramite?.requiere_partes || []
+  const color = tramite?.color_hex || '#111'
+
+  // Realtime — actualizar docs cuando IA termine de analizar
+  useEffect(() => {
+    const channel = supabase
+      .channel(`upload-docs-${ticket.id}`)
+      .on('postgres_changes', {
+        event:  'UPDATE',
+        schema: 'public',
+        table:  'documentos',
+        filter: `ticket_id=eq.${ticket.id}`,
+      }, payload => {
+        setDocumentos((prev: any[]) => prev.map((d: any) =>
+          d.id === payload.new.id ? { ...d, ...payload.new } : d
+        ))
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [ticket.id])
 
   // Agrupar docs por para_rol
   const docsPartes = partesConfig.map((pc: any) => ({
@@ -25,14 +47,13 @@ export default function UploadPublico({ ticket, token }: Props) {
     docs:        documentos.filter((d: any) => d.doc_tipos_config?.para_rol === pc.rol),
   })).filter((g: any) => g.docs.length > 0)
 
-  // Docs de operación
   const docsOperacion = documentos.filter((d: any) =>
     !d.doc_tipos_config?.para_rol ||
     d.doc_tipos_config?.para_rol === 'operacion' ||
     d.doc_tipos_config?.para_rol === 'inmueble'
   )
 
-  const totalDocs   = documentos.length
+  const totalDocs    = documentos.length
   const totalSubidos = documentos.filter((d: any) => subidos[d.id] || d.estado !== 'pendiente').length
 
   async function subirArchivo(docId: string, docTipoId: string, archivo: File) {
@@ -58,35 +79,48 @@ export default function UploadPublico({ ticket, token }: Props) {
     }
   }
 
-  const color = tramite?.color_hex || '#111'
-
   const renderDoc = (doc: any) => {
-    const config   = doc.doc_tipos_config
-    const yaSubido = subidos[doc.id] || doc.estado !== 'pendiente'
-    const cargando = subiendo === doc.id
-    const error    = errores[doc.id]
+    const config    = doc.doc_tipos_config
+    const yaSubido  = subidos[doc.id] || doc.estado !== 'pendiente'
+    const cargando  = subiendo === doc.id
+    const error     = errores[doc.id]
+    const estadoIA  = doc.datos_ocr?.estado_ia
+    const mensajeIA = doc.datos_ocr?.mensaje_ia
+    const analizando = subidos[doc.id] && !estadoIA
+
+    const borderColor = estadoIA === 'validado'  ? 'rgba(59,109,17,0.25)'  :
+                        estadoIA === 'rechazado' ? 'rgba(153,27,27,0.25)'  :
+                        estadoIA === 'revisar'   ? 'rgba(146,64,14,0.25)'  :
+                        yaSubido ? 'rgba(59,109,17,0.15)' : 'rgba(0,0,0,0.06)'
 
     return (
       <div key={doc.id} style={{
-        background:   '#fff',
-        borderRadius: '12px',
-        padding:      '12px 14px',
-        border:       `1px solid ${yaSubido ? 'rgba(59,109,17,0.2)' : 'rgba(0,0,0,0.06)'}`,
-        boxShadow:    '0 1px 3px rgba(0,0,0,0.04)',
-        marginBottom: '8px',
+        background: '#fff', borderRadius: '12px', padding: '12px 14px',
+        border: `1px solid ${borderColor}`,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: '8px',
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+
+          {/* Indicador */}
           <div style={{
             width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
-            background: yaSubido ? '#EAF3DE' : config?.obligatorio ? '#FEE2E2' : '#F3F4F6',
+            background: estadoIA === 'validado'  ? '#EAF3DE' :
+                        estadoIA === 'rechazado' ? '#FEE2E2' :
+                        estadoIA === 'revisar'   ? '#FEF3C7' :
+                        yaSubido ? '#EAF3DE' : config?.obligatorio ? '#FEE2E2' : '#F3F4F6',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px',
           }}>
-            {yaSubido
-              ? <span style={{ color: '#1A6B3C', fontWeight: 700 }}>✓</span>
-              : <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: config?.obligatorio ? '#E24B4A' : '#9CA3AF' }} />
+            {estadoIA === 'validado'  ? <span style={{ color: '#1A6B3C', fontWeight: 700 }}>✓</span> :
+             estadoIA === 'rechazado' ? <span style={{ color: '#991B1B', fontWeight: 700 }}>✗</span> :
+             estadoIA === 'revisar'   ? <span style={{ color: '#92400E', fontWeight: 700 }}>⚠</span> :
+             analizando              ? <span style={{ fontSize: '9px' }}>⏳</span> :
+             yaSubido ? <span style={{ color: '#1A6B3C', fontWeight: 700 }}>✓</span> :
+             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: config?.obligatorio ? '#E24B4A' : '#9CA3AF' }} />
             }
           </div>
+
           <div style={{ flex: 1 }}>
+            {/* Nombre */}
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#111', marginBottom: '2px' }}>
               {config?.nombre}
               {config?.obligatorio && (
@@ -95,29 +129,97 @@ export default function UploadPublico({ ticket, token }: Props) {
                 </span>
               )}
             </div>
+
+            {/* Descripción */}
             {config?.alerta_descripcion && (
               <div style={{ fontSize: '11px', color: '#9C9890', marginBottom: '4px', lineHeight: '1.4' }}>
                 {config.alerta_descripcion}
               </div>
             )}
+
+            {/* Vigencia */}
             {config?.descripcion_vigencia && config.descripcion_vigencia !== 'Sin vencimiento' && (
               <span style={{
                 display: 'inline-block', fontSize: '10px', fontWeight: 600,
                 padding: '2px 8px', borderRadius: '99px',
-                background: '#FEF3C7', color: '#92400E', marginBottom: '8px',
+                background: '#FEF3C7', color: '#92400E', marginBottom: '6px',
               }}>
                 {config.descripcion_vigencia}
               </span>
             )}
-            {yaSubido ? (
-              <div style={{ fontSize: '12px', color: '#1A6B3C', fontWeight: 600, marginTop: '6px' }}>
+
+            {/* Badge IA */}
+            {analizando && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '3px',
+              background: 'linear-gradient(135deg, #E6F1FB, #EEF5FD)',
+              border: '1px solid rgba(27,95,165,0.2)',
+              borderRadius: '10px', padding: '8px 12px',
+              marginBottom: '6px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '13px' }}>⏳</span>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#1B5FA5' }}>
+                  ✨ Verificando con IA...
+                </span>
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#4A7FB5', lineHeight: '1.4', paddingLeft: '19px' }}>
+                {config?.alerta_descripcion
+                  ? `Azure está verificando: ${config.alerta_descripcion.toLowerCase()}`
+                  : config?.descripcion_vigencia && config.descripcion_vigencia !== 'Sin vencimiento'
+                  ? `Azure está revisando que el documento cumpla: ${config.descripcion_vigencia.toLowerCase()}`
+                  : 'Azure está revisando la legibilidad y validez del documento'
+                }
+              </div>
+            </div>
+          )}
+
+            {mensajeIA && (
+              <div style={{
+                fontSize: '11px', fontWeight: 600,
+                padding: '3px 10px', borderRadius: '99px',
+                display: 'inline-block', marginBottom: '6px',
+                background: estadoIA === 'validado'  ? '#D1FAE5' :
+                            estadoIA === 'rechazado' ? '#FEE2E2' :
+                            estadoIA === 'revisar'   ? '#FEF3C7' : '#F3F4F6',
+                color:      estadoIA === 'validado'  ? '#065F46' :
+                            estadoIA === 'rechazado' ? '#991B1B' :
+                            estadoIA === 'revisar'   ? '#92400E' : '#6B7280',
+              }}>
+                {estadoIA === 'validado'  ? '✓ ' :
+                 estadoIA === 'rechazado' ? '✗ ' :
+                 estadoIA === 'revisar'   ? '⚠ ' : ''}
+                {mensajeIA}
+              </div>
+            )}
+
+            {/* Estado / botón */}
+            {yaSubido && !analizando && !mensajeIA ? (
+              <div style={{ fontSize: '12px', color: '#1A6B3C', fontWeight: 600, marginTop: '4px' }}>
                 ✅ Documento recibido
               </div>
-            ) : (
+            ) : estadoIA === 'rechazado' ? (
+              <div style={{ marginTop: '6px' }}>
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '7px 14px', borderRadius: '10px', cursor: 'pointer',
+                  background: '#FEE2E2', color: '#991B1B', fontSize: '12px', fontWeight: 600,
+                }}>
+                  🔄 Subir de nuevo
+                  <input type="file" style={{ display: 'none' }}
+                    accept=".jpg,.jpeg,.png,.webp,.pdf"
+                    onChange={e => {
+                      const archivo = e.target.files?.[0]
+                      if (archivo) subirArchivo(doc.id, doc.doc_tipo_id, archivo)
+                    }} />
+                </label>
+              </div>
+            ) : !yaSubido ? (
               <div style={{ marginTop: '8px' }}>
                 <label style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  padding: '8px 14px', borderRadius: '10px', cursor: cargando ? 'not-allowed' : 'pointer',
+                  padding: '8px 14px', borderRadius: '10px',
+                  cursor: cargando ? 'not-allowed' : 'pointer',
                   background: cargando ? '#F3F4F6' : color,
                   color: cargando ? '#9CA3AF' : '#fff',
                   fontSize: '12px', fontWeight: 600,
@@ -132,7 +234,7 @@ export default function UploadPublico({ ticket, token }: Props) {
                 </label>
                 {error && <div style={{ fontSize: '11px', color: '#E24B4A', marginTop: '6px' }}>{error}</div>}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -165,6 +267,17 @@ export default function UploadPublico({ ticket, token }: Props) {
           <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
             {tramite?.nombre} · Folio {ticket.numero}
           </div>
+          {/* Badge IA */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            marginTop: '10px', padding: '4px 10px', borderRadius: '99px',
+            background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+          }}>
+            <span style={{ fontSize: '11px' }}>✨</span>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.3px' }}>
+              Verificación automática con Inteligencia Artificial
+            </span>
+          </div>
           {partes[0]?.nombre_completo && (
             <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '8px', fontWeight: 500 }}>
               Hola, {partes[0].nombre_completo.split(' ')[0]} 👋
@@ -179,9 +292,7 @@ export default function UploadPublico({ ticket, token }: Props) {
         <div style={{ background: '#fff', borderRadius: '14px', padding: '14px 16px', marginBottom: '16px', border: '1px solid rgba(0,0,0,0.06)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#333' }}>Progreso de documentos</span>
-            <span style={{ fontSize: '12px', fontWeight: 700, color }}>
-              {totalSubidos}/{totalDocs}
-            </span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color }}>{totalSubidos}/{totalDocs}</span>
           </div>
           <div style={{ height: '6px', background: '#F3F4F6', borderRadius: '99px', overflow: 'hidden' }}>
             <div style={{
@@ -191,44 +302,42 @@ export default function UploadPublico({ ticket, token }: Props) {
             }} />
           </div>
           <div style={{ fontSize: '11px', color: '#9C9890', marginTop: '6px' }}>
-            Formatos aceptados: JPG, PNG, PDF · Máx 10MB por archivo
+            Formatos aceptados: JPG, PNG, PDF · La IA verificará la vigencia automáticamente
           </div>
         </div>
 
         {/* Instrucciones */}
         <div style={{ background: '#EAF3DE', borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', border: '1px solid rgba(59,109,17,0.15)' }}>
           <div style={{ fontSize: '12px', color: '#3B6D11', lineHeight: '1.6' }}>
-            📋 <strong>Instrucciones:</strong> Sube cada documento solicitado organizados por persona. 
-            Los marcados con <span style={{ color: '#E24B4A', fontWeight: 700 }}>obligatorio</span> son indispensables para continuar tu trámite.
+            📋 <strong>Instrucciones:</strong> Sube cada documento solicitado.
+            Los marcados con <span style={{ color: '#E24B4A', fontWeight: 700 }}>obligatorio</span> son indispensables.<br />
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
+              <span>✨</span>
+              <span>Nuestra IA verificará automáticamente la vigencia y validez de cada documento al subirlo.</span>
+            </span>
           </div>
         </div>
 
         {/* Documentos por parte */}
         {docsPartes.map(({ parteConfig, parteReal, docs }: any) => {
-          const avatarColor = parteConfig.color || color
-          const avatar      = parteConfig.avatar || parteConfig.rol.slice(0, 2).toUpperCase()
-          const nombreParte = parteReal?.nombre_completo || parteConfig.rol.replace(/_/g, ' ')
+          const avatarColor  = parteConfig.color || color
+          const avatar       = parteConfig.avatar || parteConfig.rol.slice(0, 2).toUpperCase()
+          const nombreParte  = parteReal?.nombre_completo || parteConfig.rol.replace(/_/g, ' ')
           const obligatorios = docs.filter((d: any) => d.doc_tipos_config?.obligatorio).length
           const opcionales   = docs.filter((d: any) => !d.doc_tipos_config?.obligatorio).length
 
           return (
             <div key={parteConfig.rol} style={{ marginBottom: '20px' }}>
-              {/* Header parte */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '10px 14px', borderRadius: '12px 12px 0 0',
-                background: `${avatarColor}12`,
-                border: `1px solid ${avatarColor}25`,
-                borderBottom: 'none',
+                background: `${avatarColor}12`, border: `1px solid ${avatarColor}25`, borderBottom: 'none',
               }}>
                 <div style={{
-                  width: '32px', height: '32px', borderRadius: '8px',
-                  background: avatarColor, flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '32px', height: '32px', borderRadius: '8px', background: avatarColor,
+                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '11px', fontWeight: 800, color: '#fff',
-                }}>
-                  {avatar}
-                </div>
+                }}>{avatar}</div>
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: '#111', textTransform: 'capitalize' }}>
                     {parteConfig.rol.replace(/_/g, ' ')}
@@ -238,18 +347,12 @@ export default function UploadPublico({ ticket, token }: Props) {
                   )}
                 </div>
                 <div style={{ marginLeft: 'auto', fontSize: '10px', color: '#9C9890' }}>
-                  {obligatorios > 0 && `${obligatorios} obl.`}
-                  {opcionales > 0  && ` · ${opcionales} opc.`}
+                  {obligatorios > 0 && `${obligatorios} obl.`}{opcionales > 0 && ` · ${opcionales} opc.`}
                 </div>
               </div>
-
-              {/* Docs de la parte */}
               <div style={{
-                padding: '12px',
-                background: '#FAFAF8',
-                border: `1px solid ${avatarColor}25`,
-                borderTop: 'none',
-                borderRadius: '0 0 12px 12px',
+                padding: '12px', background: '#FAFAF8',
+                border: `1px solid ${avatarColor}25`, borderTop: 'none', borderRadius: '0 0 12px 12px',
               }}>
                 {docs.map((doc: any) => renderDoc(doc))}
               </div>
@@ -257,7 +360,7 @@ export default function UploadPublico({ ticket, token }: Props) {
           )
         })}
 
-        {/* Docs de operación */}
+        {/* Docs operación */}
         {docsOperacion.length > 0 && (
           <div style={{ marginBottom: '20px' }}>
             <div style={{
@@ -266,16 +369,11 @@ export default function UploadPublico({ ticket, token }: Props) {
               background: `${color}12`, border: `1px solid ${color}25`, borderBottom: 'none',
             }}>
               <div style={{
-                width: '32px', height: '32px', borderRadius: '8px',
-                background: color, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '32px', height: '32px', borderRadius: '8px', background: color,
+                flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '10px', fontWeight: 800, color: '#fff',
-              }}>
-                OP
-              </div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#111' }}>
-                Documentos de la operación
-              </div>
+              }}>OP</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#111' }}>Documentos de la operación</div>
             </div>
             <div style={{
               padding: '12px', background: '#FAFAF8',
@@ -286,7 +384,6 @@ export default function UploadPublico({ ticket, token }: Props) {
           </div>
         )}
 
-        {/* Sin documentos */}
         {docsPartes.length === 0 && docsOperacion.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9C9890' }}>
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>📭</div>
@@ -294,10 +391,13 @@ export default function UploadPublico({ ticket, token }: Props) {
           </div>
         )}
 
-        {/* Footer */}
         <div style={{ textAlign: 'center', padding: '20px 0 16px', fontSize: '11px', color: '#9C9890' }}>
           Notaría Pública No. 3 · Celaya, Guanajuato<br />
-          Este enlace es personal y confidencial · No lo compartas con terceros
+          Este enlace es personal y confidencial · No lo compartas con terceros<br />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '6px', color: '#B0ADAA' }}>
+            <span>✨</span>
+            <span>Verificación de documentos con Azure AI</span>
+          </span>
         </div>
       </div>
     </div>
