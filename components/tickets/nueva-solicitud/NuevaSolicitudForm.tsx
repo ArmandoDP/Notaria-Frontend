@@ -58,6 +58,9 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
         telefono:         '',
         email:            '',
         es_persona_moral: p.es_pm || false,
+        es_extranjero:    false,   // ← nuevo
+        pasaporte:        '',      // ← nuevo
+        residencia:       '',      // ← nuevo
         datos_adicionales: {},
       }))
     )
