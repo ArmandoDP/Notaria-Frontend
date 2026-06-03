@@ -243,7 +243,7 @@ export default function AISidebar({
 
       {/* Footer */}
       <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <AIButton onClick={onVolver} label="← Volver al CRM" />
+          <AIButton onClick={onVolver} label="← Volver al CRM" variant='button'/>
       </div>
 
       {/* Modal eliminar */}

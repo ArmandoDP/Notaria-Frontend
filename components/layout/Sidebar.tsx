@@ -13,8 +13,8 @@ const navItems = [
   { href: '/nueva',  label: 'Nueva solicitud', icon: '✦' },
   { href: '/chats',  label: 'Chats WhatsApp',  icon: '💬' },
   { section: 'Reportes' },
-  { href: '/area',      label: 'Tablero por área', icon: '◧' },
-  { href: '/dashboard', label: 'Dashboard',        icon: '◉' },
+  // { href: '/area',      label: 'Tablero por área', icon: '◧' },
+  { href: '/dashboard', label: 'Dashboard',        icon: '📊' },
   { href: '/folios',    label: 'Buscar folios',     icon: '⌕' },
 ]
 

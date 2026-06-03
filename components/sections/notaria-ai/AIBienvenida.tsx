@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const SUGERENCIAS = [
   '¿Qué documentos necesita una compraventa con INFONAVIT?',
@@ -19,7 +19,7 @@ interface Props {
   input:          string
   cargando:       boolean
   onChange:       (val: string) => void
-  onEnviar:       () => void
+  onEnviar: (imagenes?: {data: string, mime_type: string}[]) => void
 }
 
 export default function AIBienvenida({ onSugerencia, nombreUsuario, input, cargando, onChange, onEnviar }: Props) {
@@ -91,10 +91,82 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnviar() }
   }
+  
+    const fileRef = useRef<HTMLInputElement>(null)
+
+    async function handleArchivo(e: React.ChangeEvent<HTMLInputElement>) {
+        const files = Array.from(e.target.files || [])
+        const nuevas = await Promise.all(files.map(async file => {
+            return new Promise<{data: string, mime_type: string, preview: string}>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+                const base64  = (reader.result as string).split(',')[1]
+                const preview = reader.result as string
+                resolve({ data: base64, mime_type: file.type, preview })
+            }
+            reader.readAsDataURL(file)
+            })
+        }))
+        // Enviar con las imágenes directamente
+        onEnviar(nuevas.map(i => ({ data: i.data, mime_type: i.mime_type })))
+        if (fileRef.current) fileRef.current.value = ''
+    }
+
+    const [dragging, setDragging] = useState(false)
+
+    function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    const files = Array.from(e.dataTransfer.files).filter(f =>
+        f.type.startsWith('image/') || f.type === 'application/pdf'
+    )
+    if (files.length === 0) return
+    Promise.all(files.map(file =>
+        new Promise<{data: string, mime_type: string}>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve({
+            data: (reader.result as string).split(',')[1],
+            mime_type: file.type,
+        })
+        reader.readAsDataURL(file)
+        })
+    )).then(imagenes => onEnviar(imagenes))
+    }
 
   return (
     <div className="relative flex flex-col items-center justify-center h-full overflow-hidden"
-      style={{ background: '#F3F0FF' }}>
+        style={{ background: '#F3F0FF' }}
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }}
+        onDrop={handleDrop}>
+            
+        {/* Overlay de drag */}
+        {dragging && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center"
+            style={{
+                background: 'rgba(120,80,255,0.08)',
+                backdropFilter: 'blur(2px)',
+                border: '2px dashed rgba(160,120,255,0.5)',
+                borderRadius: '0',
+                animation: 'dragPulse 1s ease-in-out infinite',
+            }}>
+            <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-[28px]"
+                style={{
+                    background: 'linear-gradient(135deg, #C8B4F8, #B4D8F8)',
+                    animation: 'dragBounce 0.6s ease-in-out infinite alternate',
+                }}>
+                📎
+                </div>
+                <div className="text-[16px] font-bold" style={{ color: '#7B5FD0' }}>
+                Suelta aquí tus archivos
+                </div>
+                <div className="text-[12px]" style={{ color: 'rgba(120,80,255,0.6)' }}>
+                Imágenes y PDFs — múltiples archivos permitidos
+                </div>
+            </div>
+            </div>
+        )}
 
       {/* Aurora de fondo */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -180,32 +252,56 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
 
         {/* Input centrado en bienvenida */}
         <div className="w-full relative">
-          <div className="absolute inset-0 rounded-2xl pointer-events-none" style={{
-            background: G, backgroundSize: '300% 300%', animation: 'aiPastel 5s ease infinite',
-            WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-            WebkitMaskComposite: 'destination-out', maskComposite: 'exclude',
-            padding: '1.5px', opacity: 0.35,
-          }} />
-          <div className="flex items-end gap-3 px-4 py-3 rounded-2xl"
-            style={{ background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-            <textarea
-              value={input}
-              onChange={e => onChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Escribe tu pregunta aquí..."
-              rows={1}
-              className="flex-1 text-[14px] outline-none resize-none bg-transparent"
-              style={{ color: '#1A1A2E', maxHeight: '120px', caretColor: '#C8B4F8' }}
-            />
-            <button onClick={onEnviar} disabled={!input.trim() || cargando}
-              className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer border-none flex-shrink-0 overflow-hidden relative transition-all"
-              style={{ background: '#0A0814', opacity: input.trim() && !cargando ? 1 : 0.3 }}>
-              {input.trim() && !cargando && (
-                <div className="absolute inset-0" style={{ background: G, backgroundSize: '300% 300%', animation: 'aiPastel 3s ease infinite', opacity: 0.7 }} />
-              )}
-              <span className="relative z-10 text-[15px] text-white">➤</span>
-            </button>
-          </div>
+            <div className="absolute inset-0 rounded-2xl pointer-events-none" style={{
+                background: G, backgroundSize: '300% 300%', animation: 'aiPastel 5s ease infinite',
+                WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                WebkitMaskComposite: 'destination-out', maskComposite: 'exclude',
+                padding: '1.5px', opacity: 0.35,
+            }} />
+            <div className="flex items-end gap-2 px-4 py-3 rounded-2xl"
+                style={{ background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+
+                {/* Botón adjuntar */}
+                <button
+                onClick={() => fileRef.current?.click()}
+                className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer border-none flex-shrink-0 mb-0.5 transition-all"
+                style={{ background: 'rgba(160,120,255,0.1)', color: '#7B5FD0' }}
+                title="Adjuntar imagen">
+                📎
+                </button>
+                <input ref={fileRef} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleArchivo} />
+
+                <textarea
+                value={input}
+                onChange={e => {
+                    onChange(e.target.value)
+                    // Auto resize
+                    e.target.style.height = 'auto'
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Escribe tu pregunta o adjunta un documento..."
+                rows={1}
+                className="flex-1 text-[14px] outline-none resize-none bg-transparent"
+                style={{
+                    color:      '#1A1A2E',
+                    minHeight:  '24px',
+                    maxHeight:  '200px',
+                    height:     'auto',
+                    caretColor: '#C8B4F8',
+                    overflowY:  'auto',
+                }}
+                />
+
+                <button onClick={() => onEnviar()} disabled={!input.trim() || cargando}
+                className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer border-none flex-shrink-0 overflow-hidden relative transition-all mb-0.5"
+                style={{ background: '#0A0814', opacity: input.trim() && !cargando ? 1 : 0.3 }}>
+                {input.trim() && !cargando && (
+                    <div className="absolute inset-0" style={{ background: G, backgroundSize: '300% 300%', animation: 'aiPastel 3s ease infinite', opacity: 0.7 }} />
+                )}
+                <span className="relative z-10 text-[15px] text-white">➤</span>
+                </button>
+            </div>
         </div>
 
         <div className="text-[11.5px]" style={{ color: 'rgba(0,0,0,0.6)' }}>
@@ -220,6 +316,14 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
         @keyframes auroraMove { 0%,100%{transform:translateX(-50%) scaleX(1);opacity:1} 50%{transform:translateX(-47%) scaleX(1.08);opacity:0.7} }
         @keyframes auroraMove2 { 0%,100%{transform:translateX(0) scaleX(1);opacity:0.8} 50%{transform:translateX(8%) scaleX(0.92);opacity:1} }
         @keyframes auroraMove3 { 0%,100%{transform:scaleX(1);opacity:0.7} 50%{transform:scaleX(1.12);opacity:1} }
+        @keyframes dragPulse {
+            0%, 100% { background: rgba(120,80,255,0.06); }
+            50%       { background: rgba(120,80,255,0.12); }
+        }
+        @keyframes dragBounce {
+            0%   { transform: translateY(0) scale(1); }
+            100% { transform: translateY(-8px) scale(1.1); }
+        }
       `}</style>
     </div>
   )

@@ -6,32 +6,33 @@ import { es } from 'date-fns/locale'
 import AIButton from '@/components/sections/notaria-ai/AIButton'
 
 interface Props {
-  ticket:          any
-  estado:          string
-  saving:          boolean
-  tramites:        any[]
-  areas:           any[]
-  conversacionId:  string | null
-  folioDBA:        string
-  folioEscritura:  string
+  ticket:                  any
+  estado:                  string
+  saving:                  boolean
+  tramites:                any[]
+  areas:                   any[]
+  conversacionId:          string | null
+  folioDBA:                string
+  folioEscritura:          string
   folioDBAVinculado:       boolean
   folioEscrituraVinculado: boolean
-  reasignando:     boolean
-  nuevoTramiteId:  string
-  nuevoAreaId:     string
+  reasignando:             boolean
+  nuevoTramiteId:          string
+  nuevoAreaId:             string
   onFolioDBAChange:        (val: string) => void
   onFolioEscrituraChange:  (val: string) => void
   onGuardarFolioDBA:       () => void
   onGuardarFolioEscritura: () => void
-  onCambiarEstadoFolioDBA:     () => void
-  onCambiarEstadoEscritura:    () => void
-  onSetReasignando:    (val: boolean) => void
-  onNuevoTramiteId:    (val: string) => void
-  onNuevoAreaId:       (val: string) => void
-  onGuardarReasignacion: () => void
-  onEnviarRecordatorio:  () => void
-  onDescargarExpediente: () => void
-  onCopiarLink:          () => void
+  onCambiarEstadoFolioDBA:  () => void
+  onCambiarEstadoEscritura: () => void
+  onSetReasignando:         (val: boolean) => void
+  onNuevoTramiteId:         (val: string) => void
+  onNuevoAreaId:            (val: string) => void
+  onGuardarReasignacion:    () => void
+  onEnviarRecordatorio:     () => void
+  onDescargarExpediente:    () => void
+  onCopiarLink:             () => void
+  onCopiarLinkParte: (url: string, rolLabel: string) => void
 }
 
 export default function TicketSidebar({
@@ -43,10 +44,54 @@ export default function TicketSidebar({
   onCambiarEstadoFolioDBA, onCambiarEstadoEscritura,
   onSetReasignando, onNuevoTramiteId, onNuevoAreaId,
   onGuardarReasignacion, onEnviarRecordatorio,
-  onDescargarExpediente, onCopiarLink,
+  onCopiarLink,
+  onCopiarLinkParte,
 }: Props) {
   const tramite = ticket.tramites_config
   const area    = ticket.areas
+
+  const [descargando, setDescargando] = useState(false)
+  const [fase,        setFase]        = useState('')
+
+  async function descargar() {
+    setDescargando(true)
+    setFase('Recopilando documentos...')
+
+    const fases = [
+      'Recopilando documentos...',
+      'Comprimiendo archivos...',
+      'Generando expediente ZIP...',
+      'Casi listo...',
+    ]
+    let i = 0
+    const intervalo = setInterval(() => {
+      i++
+      if (i < fases.length) setFase(fases[i])
+    }, 1200)
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/docs/descargar-expediente/${ticket.id}`)
+      clearInterval(intervalo)
+      if (!res.ok) {
+        const err = await res.json()
+        alert(`❌ ${err.detail}`)
+        return
+      }
+      setFase('¡Listo para descargar!')
+      await new Promise(r => setTimeout(r, 600))
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = `${ticket.numero}.zip`; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      clearInterval(intervalo)
+      alert('Error al generar el expediente')
+    } finally {
+      setDescargando(false)
+      setFase('')
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -59,7 +104,7 @@ export default function TicketSidebar({
         </div>
         <AIButton href={`/notaria-ai?ticket=${ticket.id}`} label="Consultar con Notaría AI" />
         <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-          Powered by Notaria AI GPT-4o
+          Powered by Notaría AI GPT-4o
         </div>
       </div>
 
@@ -127,21 +172,85 @@ export default function TicketSidebar({
         </div>
       </div>
 
-      {/* Link de carga */}
-      <div className="bg-white rounded-2xl p-4"
+      {/* Links de carga por parte */}
+        <div className="bg-white rounded-2xl p-4"
         style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-          Link de carga
+            Links de carga
         </div>
-        <button onClick={onCopiarLink}
-          className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
-          style={{ background: '#E6F1FB', color: '#185FA5' }}>
-          📋 Copiar link de carga
-        </button>
-        <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-          Comparte este link con el cliente
+
+        {ticket.partes && ticket.partes.length > 0 ? (
+            <div className="flex flex-col gap-2">
+            {ticket.partes
+                .filter((p: any) => p.upload_token)
+                .sort((a: any, b: any) => a.orden - b.orden)
+                .map((parte: any) => {
+                const rolLabel = parte.rol.replace(/_/g, ' ')
+                const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/upload-parte/${parte.upload_token}`
+                return (
+                    <div key={parte.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                        <div>
+                        <div className="text-[11px] font-semibold capitalize" style={{ color: '#333' }}>
+                            {rolLabel}
+                        </div>
+                        {parte.nombre_completo && (
+                            <div className="text-[10px]" style={{ color: '#9C9890' }}>
+                            {parte.nombre_completo}
+                            </div>
+                        )}
+                        </div>
+                        <button
+                            onClick={() => onCopiarLinkParte(url, rolLabel)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none transition-all flex-shrink-0"
+                            style={{ background: '#E6F1FB', color: '#185FA5' }}>
+                            📋 Copiar
+                        </button>
+                    </div>
+                    </div>
+                )
+                })}
+            </div>
+        ) : (
+            <div className="text-[11px] text-center py-2" style={{ color: '#9C9890' }}>
+            Sin partes configuradas
+            </div>
+        )}
+        {/* Link operación — solo si hay docs de operación en este trámite */}
+        {(() => {
+        const tieneDocsOperacion = (ticket.documentos || []).some((d: any) =>
+            d.doc_tipos_config?.para_rol === 'operacion' ||
+            d.doc_tipos_config?.para_rol === 'inmueble' ||
+            (!d.doc_tipos_config?.para_rol && !d.parte_id)
+        )
+
+        if (!tieneDocsOperacion || !ticket.upload_token) return null
+
+        return (
+            <div className="flex items-center justify-between gap-2 py-1 pt-2"
+            style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+            <div className="min-w-0">
+                <div className="text-[11px] font-semibold" style={{ color: '#333' }}>
+                Documentos de la operación
+                </div>
+                <div className="text-[10px]" style={{ color: '#9C9890' }}>
+                Documentos generales del trámite
+                </div>
+            </div>
+            <button
+                onClick={() => onCopiarLink()}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none transition-all flex-shrink-0"
+                style={{ background: '#E6F1FB', color: '#185FA5' }}>
+                📋 Copiar
+            </button>
+            </div>
+        )
+        })()}
+
+        <div className="text-[10px] mt-3 text-center" style={{ color: '#9C9890' }}>
+            Cada link es exclusivo para su parte
         </div>
-      </div>
+        </div>
 
       {/* Reasignar */}
       <div className="bg-white rounded-2xl p-4"
@@ -191,13 +300,13 @@ export default function TicketSidebar({
         <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
           Expediente
         </div>
-        <button onClick={onDescargarExpediente}
-          className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
-          style={{ background: '#111', color: '#fff' }}>
-          📦 Descargar expediente ZIP
+        <button onClick={descargar} disabled={descargando}
+          className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+          style={{ background: descargando ? '#F3F4F6' : '#111', color: descargando ? '#9CA3AF' : '#fff' }}>
+          {descargando ? '⏳ Generando...' : '📦 Descargar expediente ZIP'}
         </button>
         <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-          Requiere todos los documentos obligatorios subidos
+          Descarga los documentos subidos hasta ahora
         </div>
       </div>
 
@@ -242,6 +351,55 @@ export default function TicketSidebar({
           )}
         </div>
       </div>
+
+      {/* Modal compresión */}
+      {descargando && (
+        <div className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div className="rounded-2xl p-6 w-80 text-center"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+            <div className="relative w-16 h-16 mx-auto mb-4">
+              <div className="absolute inset-0 rounded-2xl flex items-center justify-center text-[28px]"
+                style={{ background: '#F7F7F5' }}>
+                📦
+              </div>
+              <svg className="absolute inset-0 w-full h-full" style={{ transform: 'rotate(-90deg)' }} viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="28" fill="none" stroke="#F3F4F6" strokeWidth="4"/>
+                <circle cx="32" cy="32" r="28" fill="none" stroke="#111" strokeWidth="4"
+                  strokeLinecap="round" strokeDasharray="175" strokeDashoffset="175"
+                  style={{ animation: 'zipProgress 3s ease-in-out infinite' }}/>
+              </svg>
+            </div>
+
+            <div className="text-[15px] font-bold mb-1" style={{ color: '#111' }}>
+              Generando expediente
+            </div>
+            <div className="text-[13px] mb-4" style={{ color: '#666' }}>
+              {fase}
+            </div>
+
+            <div className="flex justify-center gap-1.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full"
+                  style={{ background: '#111', animation: `zipDot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes zipProgress {
+          0%   { stroke-dashoffset: 175; }
+          50%  { stroke-dashoffset: 44;  }
+          100% { stroke-dashoffset: 175; }
+        }
+        @keyframes zipDot {
+          0%, 60%, 100% { transform: translateY(0);   opacity: 0.4; }
+          30%            { transform: translateY(-6px); opacity: 1;   }
+        }
+      `}</style>
     </div>
   )
 }

@@ -1,9 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import UploadPublico from '@/components/upload/UploadPublico'
+import { createClient } from '@supabase/supabase-js'
 
-export default async function UploadPage({ params }: { params: { token: string } }) {
-  const supabase = await createClient()
+export default async function UploadPage({ params, searchParams }: { params: { token: string }; searchParams: { tipo?: string } }) {
+  
+  // Cliente público sin auth — solo anon key
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  )
 
   const { data: ticket } = await supabase
     .from('tickets')
@@ -17,9 +22,10 @@ export default async function UploadPage({ params }: { params: { token: string }
       )
     `)
     .eq('upload_token', params.token)
+    .eq('upload_token_activo', true)
     .single()
 
-  if (!ticket || !ticket.upload_token_activo) notFound()
+  if (!ticket) notFound()
 
-  return <UploadPublico ticket={ticket} token={params.token} />
+  return <UploadPublico ticket={ticket} token={params.token} soloOperacion={searchParams.tipo === 'operacion'} />
 }

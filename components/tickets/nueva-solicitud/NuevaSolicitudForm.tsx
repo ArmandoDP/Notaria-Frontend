@@ -7,7 +7,15 @@ import SeccionCanal     from '../nueva-solicitud/SeccionCanal'
 import SeccionTramite   from '../nueva-solicitud/SeccionTramite'
 import SeccionPartes    from '../nueva-solicitud/SeccionPartes'
 import SeccionPreguntas from '../nueva-solicitud/SeccionPreguntas'
-import SeccionRiesgos   from '../nueva-solicitud/SeccionRiesgos'
+import SeccionRiesgos from '../nueva-solicitud/SeccionRiesgos'
+import ModalCreandoTicket from '../../ui/ModalCreandoTicket'
+
+type EstadoPaso = 'pendiente' | 'activo' | 'listo'
+
+interface Paso {
+  label:  string
+  estado: EstadoPaso
+}
 
 interface Parte {
   rol:              string
@@ -36,7 +44,16 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
   const [partes,     setPartes]     = useState<Parte[]>([])
   const [respuestas, setRespuestas] = useState<RespuestaPregunta[]>([])
   const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState('')
+  const [error, setError] = useState('')
+  
+  const [creando, setCreando] = useState(false)
+  const [pasos, setPasos] = useState<Paso[]>([
+    { label: 'Generando número de expediente...',    estado: 'pendiente' },
+    { label: 'Asignando al área correspondiente...', estado: 'pendiente' },
+    { label: 'Configurando documentos requeridos...', estado: 'pendiente' },
+    { label: 'Enviando confirmación al cliente...',   estado: 'pendiente' },
+  ])
+
 
   const tramiteSeleccionado = tramites.find(t => t.id === tramiteId)
 
@@ -91,13 +108,26 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
     }])
   }
 
+  function avanzarPaso(index: number) {
+  setPasos(prev => prev.map((p, i) => ({
+    ...p,
+    estado: i < index  ? 'listo'    :
+            i === index ? 'activo'   : 'pendiente'
+  })))
+}
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!tramiteId || !areaId) { setError('Selecciona un trámite y área'); return }
     setLoading(true)
     setError('')
+    setCreando(true)
+    avanzarPaso(0)
 
     try {
+      await new Promise(r => setTimeout(r, 600))
+      avanzarPaso(1)
+
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tickets/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,8 +148,9 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
       }
 
       const ticket = await res.json()
+      avanzarPaso(2)
 
-      // Guardar respuestas si hay alguna
+      // Guardar respuestas
       const respondidas = respuestas.filter(r => r.respuesta.trim())
       if (respondidas.length > 0) {
         await supabase.from('ticket_preguntas').insert(
@@ -132,9 +163,17 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
         )
       }
 
+      avanzarPaso(3)
+      await new Promise(r => setTimeout(r, 800))
+
+      // Todos listos
+      setPasos(prev => prev.map(p => ({ ...p, estado: 'listo' as const })))
+      await new Promise(r => setTimeout(r, 600))
+
       router.push(`/tickets/${ticket.id}`)
 
     } catch (err: any) {
+      setCreando(false)
       setError(err.message || 'Error al crear el ticket')
       setLoading(false)
     }
@@ -202,6 +241,7 @@ export default function NuevaSolicitudForm({ tramites, areas }: { tramites: any[
             {loading ? 'Creando ticket...' : 'Crear ticket →'}
           </button>
         )}
+        {creando && <ModalCreandoTicket pasos={pasos} />}
       </form>
     </div>
   )

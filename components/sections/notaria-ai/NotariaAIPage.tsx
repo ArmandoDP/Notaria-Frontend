@@ -11,6 +11,7 @@ import AIInput      from './AIInput'
 interface Mensaje {
   role:    'user' | 'assistant'
   content: string
+  acciones?: { nombre: string, resultado: string }[]
 }
 
 export default function NotariaAIPage() {
@@ -27,6 +28,7 @@ export default function NotariaAIPage() {
   const [convActiva,      setConvActiva]      = useState<string | null>(null)
   const [usuarioId,       setUsuarioId]       = useState<string | null>(null)
   const [nombreUsuario,   setNombreUsuario]   = useState('')
+  const [pensando, setPensando] = useState('')
 
   const API = process.env.NEXT_PUBLIC_API_URL || ''
 
@@ -99,17 +101,18 @@ export default function NotariaAIPage() {
   }
 
   async function seleccionarConversacion(conv: any) {
-    setConvActiva(conv.id)
+    // Limpiar todo primero
+    setHistorial([])
     setContexto(null)
-    
-    console.log('API URL:', API, 'Conv ID:', conv.id)
-      
+    setInput('')
+    setConvActiva(conv.id)
+
     const res = await fetch(`${API}/api/chat/conversacion/${conv.id}/mensajes`)
     if (res.ok) {
-      const msgs = await res.json()
-      setHistorial(msgs.map((m: any) => ({ role: m.role, content: m.content })))
+        const msgs = await res.json()
+        setHistorial(msgs.map((m: any) => ({ role: m.role, content: m.content })))
     }
-  }
+    }
 
   async function eliminarConversacion(id: string) {
     await fetch(`${API}/api/chat/conversacion/${id}`, { method: 'DELETE' })
@@ -121,14 +124,30 @@ export default function NotariaAIPage() {
   }
 
   async function nuevaConversacion() {
-    const conv = await crearConversacion('Nueva conversación')
-    if (conv) setHistorial([])
-  }
+    setConvActiva(null)
+    setHistorial([])
+    setContexto(null)
+    setInput('')
+    }
 
-  async function enviarMensaje(texto?: string, convId?: string) {
-    const msg   = texto || input.trim()
-    const cId   = convId || convActiva
-    if (!msg || cargando) return
+  async function enviarMensaje(texto?: string, convId?: string, imagenes?: {data: string, mime_type: string}[]) {
+    const msg = texto || input.trim()
+    const cId = convId || convActiva
+    
+    const frases = [
+        'Analizando tu solicitud...',
+        'Consultando la base de datos...',
+        'Ejecutando acción...',
+        'Procesando respuesta...',
+    ]
+    let idx = 0
+    const intervalo = setInterval(() => {
+        setPensando(frases[idx % frases.length])
+        idx++
+    }, 1500)
+
+    if (!msg && (!imagenes || imagenes.length === 0)) return
+    if (cargando) return
 
     // Si no hay conversación activa, crear una
     let idUsar = cId
@@ -168,12 +187,28 @@ export default function NotariaAIPage() {
       })
       const data = await res.json()
       if (data.contexto && !contexto) setContexto(data.contexto)
-      setHistorial([...nuevoHistorial, { role: 'assistant', content: data.respuesta }])
+      setHistorial([...nuevoHistorial, { role: 'assistant', content: data.respuesta, acciones: data.acciones || [] }])
     } catch {
       setHistorial([...nuevoHistorial, { role: 'assistant', content: 'Ocurrió un error. Intenta de nuevo.' }])
     } finally {
-      setCargando(false)
+        setCargando(false)
+        clearInterval(intervalo)
+        setPensando('')
     }
+    
+    
+    const res = await fetch(`${API}/api/chat/mensaje`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+        mensaje:         msg || '',
+        historial:       historial.map(m => ({ role: m.role, content: m.content })),
+        ticket_id:       ticketId || null,
+        conversacion_id: idUsar,
+        usuario_id:      usuarioId,
+        imagenes:        imagenes || null,
+        }),
+    })
   }
   
 
@@ -216,17 +251,17 @@ export default function NotariaAIPage() {
             input={input}
             cargando={cargando}
             onChange={setInput}
-            onEnviar={() => enviarMensaje()}
+            onEnviar={(imagenes) => enviarMensaje(undefined, undefined, imagenes)}
             />
         </div>
         ) : (
         <>
-            <AIMensajes historial={historial} cargando={cargando} />
+            <AIMensajes historial={historial} cargando={cargando} pensando={pensando} />
             <AIInput
             input={input}
             cargando={cargando}
             onChange={setInput}
-            onEnviar={() => enviarMensaje()}
+            onEnviar={(imagenes) => enviarMensaje(undefined, undefined, imagenes)}
             hayMensajes={true}
             />
         </>
