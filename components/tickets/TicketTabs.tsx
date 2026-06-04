@@ -50,7 +50,7 @@ export default function TicketTabs({
       {/* Tab content */}
       <div className="p-4">
         {activeTab === 'docs'      && <TabDocs documentos={documentos} tramite={tramite} ticket={ticket} onSubir={onSubir} onValidar={onValidar} />}
-        {activeTab === 'partes'    && <TabPartes partes={partes} tramite={tramite} />}
+        {activeTab === 'partes'    && <TabPartes partes={partes} tramite={tramite} ticketId={ticket.id} />}
         {activeTab === 'preguntas' && <TabPreguntas ticketId={ticket.id} preguntas={preguntas} />}
         {activeTab === 'historial' && <TabHistorial eventos={eventos} />}
       </div>

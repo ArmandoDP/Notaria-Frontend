@@ -2,16 +2,19 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import UploadParte from '@/components/upload/UploadParte'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function UploadPartePage({ params }: { params: { token: string } }) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   )
 
-  // Buscar la parte por token
+  // Buscar la parte por token — trae todos los campos
   const { data: parte } = await supabase
     .from('partes')
-    .select('id, rol, nombre_completo, ticket_id, upload_token_activo')
+    .select('*')  // ← trae todos los campos
     .eq('upload_token', params.token)
     .eq('upload_token_activo', true)
     .single()

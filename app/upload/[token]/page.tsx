@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation'
 import UploadPublico from '@/components/upload/UploadPublico'
 import { createClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function UploadPage({ params, searchParams }: { params: { token: string }; searchParams: { tipo?: string } }) {
   
   // Cliente público sin auth — solo anon key

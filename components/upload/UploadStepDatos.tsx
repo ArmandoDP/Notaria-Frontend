@@ -18,6 +18,8 @@ const CAMPOS = [
 ]
 
 export default function UploadStepDatos({ parteConfig, parteReal, color, onContinuar }: Props) {
+  const [modalAviso, setModalAviso] = useState(true)
+
   const [datos, setDatos] = useState({
     nombre_completo: parteReal?.nombre_completo || '',
     curp:            parteReal?.curp            || '',
@@ -66,6 +68,57 @@ export default function UploadStepDatos({ parteConfig, parteReal, color, onConti
           </div>
         </div>
       </div>
+
+      {/* modal  */}
+      {modalAviso && (
+      <div className="fixed inset-0 flex items-center justify-center z-50"
+        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+        <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
+          style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+          {/* Header */}
+          <div className="px-6 pt-6 pb-4">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 text-[24px]"
+              style={{ background: '#E6F1FB' }}>
+              📋
+            </div>
+            <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
+              Antes de continuar
+            </div>
+            <div className="text-[13px] leading-relaxed mb-3" style={{ color: '#555' }}>
+              Para completar tu expediente correctamente, ten a la mano tus documentos oficiales vigentes.
+            </div>
+
+            {/* Tips */}
+            <div className="flex flex-col gap-2">
+              {[
+                { emoji: '🪪', texto: 'Los datos deben coincidir exactamente con tu identificación oficial (INE, pasaporte).' },
+                { emoji: '✍️', texto: 'Escribe tu nombre completo tal como aparece en tus documentos, sin abreviaturas.' },
+                { emoji: '📄', texto: 'Ten listos los documentos que se te solicitarán: INE, CURP, comprobante de domicilio, etc.' },
+                { emoji: '📅', texto: 'Verifica que tus documentos estén vigentes antes de subirlos.' },
+              ].map((tip, i) => (
+                <div key={i} className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
+                  style={{ background: '#F7F7F5' }}>
+                  <span className="text-[16px] flex-shrink-0">{tip.emoji}</span>
+                  <span className="text-[12px] leading-relaxed" style={{ color: '#444' }}>{tip.texto}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+          {/* Botón */}
+          <div className="px-6 py-4">
+            <button onClick={() => setModalAviso(false)}
+              className="w-full py-3 rounded-xl text-[14px] font-bold cursor-pointer border-none"
+              style={{ background: '#111', color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+              Entendido, continuar →
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
       {/* Formulario */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>

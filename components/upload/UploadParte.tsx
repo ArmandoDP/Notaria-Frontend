@@ -19,12 +19,22 @@ export default function UploadParte({ parte, ticket, documentos: docsIniciales, 
   const tramite   = ticket.tramites_config
   const color     = tramite?.color_hex || '#111'
   const parteConf = tramite?.requiere_partes?.find((p: any) => p.rol === parte.rol) || { rol: parte.rol }
+  
+  // Docs de esta parte
+  const docsDeEstaParte = docsIniciales.filter((d: any) =>
+    d.parte_id === parte.id ||
+    d.doc_tipos_config?.para_rol === parte.rol
+  )
+
+  const todosObligatoriosSubidos = docsDeEstaParte
+    .filter((d: any) => d.doc_tipos_config?.obligatorio)
+    .every((d: any) => d.estado !== 'pendiente' && d.estado !== null)
 
   const [documentos, setDocumentos] = useState(docsIniciales || [])
   const [subiendo,   setSubiendo]   = useState<string | null>(null)
   const [subidos,    setSubidos]    = useState<Record<string, boolean>>({})
   const [errores,    setErrores]    = useState<Record<string, string>>({})
-  const [paso,       setPaso]       = useState<'datos' | 'docs' | 'completo'>('datos')
+  const [paso, setPaso] = useState<'datos' | 'docs' | 'completo'>(todosObligatoriosSubidos ? 'completo' : 'datos')
 
   // Realtime
   useEffect(() => {
