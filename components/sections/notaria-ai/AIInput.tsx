@@ -33,15 +33,17 @@ export default function AIInput({ input, cargando, onChange, onEnviar, hayMensaj
       return new Promise<{data: string, mime_type: string, preview: string}>((resolve) => {
         const reader = new FileReader()
         reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1]
+          const base64  = (reader.result as string).split(',')[1]
           const preview = reader.result as string
           resolve({ data: base64, mime_type: file.type, preview })
         }
         reader.readAsDataURL(file)
       })
     }))
+    // Solo agrega al estado — NO llama onEnviar
     setImagenes(prev => [...prev, ...nuevas].slice(0, 4))
     if (fileRef.current) fileRef.current.value = ''
+    // ← Asegúrate que NO hay onEnviar(nuevas) aquí
   }
 
   const puedeEnviar = (input.trim() || imagenes.length > 0) && !cargando

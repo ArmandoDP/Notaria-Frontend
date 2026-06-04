@@ -133,33 +133,32 @@ export default function NotariaAIPage() {
   async function enviarMensaje(texto?: string, convId?: string, imagenes?: {data: string, mime_type: string}[]) {
     const msg = texto || input.trim()
     const cId = convId || convActiva
-    
-    const frases = [
-        'Analizando tu solicitud...',
-        'Consultando la base de datos...',
-        'Ejecutando acción...',
-        'Procesando respuesta...',
-    ]
-    let idx = 0
-    const intervalo = setInterval(() => {
-        setPensando(frases[idx % frases.length])
-        idx++
-    }, 1500)
 
     if (!msg && (!imagenes || imagenes.length === 0)) return
     if (cargando) return
 
-    // Si no hay conversación activa, crear una
+    const frases = [
+      'Analizando tu solicitud...',
+      'Consultando la base de datos...',
+      'Ejecutando acción...',
+      'Procesando respuesta...',
+    ]
+    let idx = 0
+    const intervalo = setInterval(() => {
+      setPensando(frases[idx % frases.length])
+      idx++
+    }, 1500)
+
     let idUsar = cId
     if (!idUsar) {
-      const conv = await crearConversacion(msg.slice(0, 50))
-      if (!conv) return
+      const conv = await crearConversacion((msg || 'Archivo adjunto').slice(0, 50))
+      if (!conv) { clearInterval(intervalo); return }
       idUsar = conv.id
     }
 
-    // Actualizar título si es el primer mensaje
+    // ← Solo manda el titulo, nada más
     const convActualObj = conversaciones.find(c => c.id === idUsar)
-    if (convActualObj?.titulo === 'Nueva conversación') {
+    if (convActualObj?.titulo === 'Nueva conversación' && msg) {
       await fetch(`${API}/api/chat/conversacion/${idUsar}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +167,10 @@ export default function NotariaAIPage() {
       setConversaciones(prev => prev.map(c => c.id === idUsar ? { ...c, titulo: msg.slice(0, 50) } : c))
     }
 
-    const nuevoHistorial: Mensaje[] = [...historial, { role: 'user', content: msg }]
+    const nuevoHistorial: Mensaje[] = [
+      ...historial,
+      { role: 'user', content: msg || '📎 Archivo adjunto' }
+    ]
     setHistorial(nuevoHistorial)
     setInput('')
     setCargando(true)
@@ -178,37 +180,31 @@ export default function NotariaAIPage() {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          mensaje:         msg,
+          mensaje:         msg || '',
           historial:       historial.map(m => ({ role: m.role, content: m.content })),
           ticket_id:       ticketId || null,
           conversacion_id: idUsar,
           usuario_id:      usuarioId,
+          imagenes:        imagenes || null,
         }),
       })
       const data = await res.json()
       if (data.contexto && !contexto) setContexto(data.contexto)
-      setHistorial([...nuevoHistorial, { role: 'assistant', content: data.respuesta, acciones: data.acciones || [] }])
+      setHistorial([...nuevoHistorial, {
+        role:     'assistant',
+        content:  data.respuesta,
+        acciones: data.acciones || [],
+      }])
     } catch {
-      setHistorial([...nuevoHistorial, { role: 'assistant', content: 'Ocurrió un error. Intenta de nuevo.' }])
+      setHistorial([...nuevoHistorial, {
+        role:    'assistant',
+        content: 'Ocurrió un error. Intenta de nuevo.',
+      }])
     } finally {
-        setCargando(false)
-        clearInterval(intervalo)
-        setPensando('')
+      setCargando(false)
+      clearInterval(intervalo)
+      setPensando('')
     }
-    
-    
-    const res = await fetch(`${API}/api/chat/mensaje`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-        mensaje:         msg || '',
-        historial:       historial.map(m => ({ role: m.role, content: m.content })),
-        ticket_id:       ticketId || null,
-        conversacion_id: idUsar,
-        usuario_id:      usuarioId,
-        imagenes:        imagenes || null,
-        }),
-    })
   }
   
 

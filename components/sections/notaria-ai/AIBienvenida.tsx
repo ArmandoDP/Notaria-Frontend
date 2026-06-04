@@ -23,6 +23,8 @@ interface Props {
 }
 
 export default function AIBienvenida({ onSugerencia, nombreUsuario, input, cargando, onChange, onEnviar }: Props) {
+  const [imagenesB, setImagenesB] = useState<{ data: string, mime_type: string, preview: string }[]>([])
+  
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef   = useRef<HTMLDivElement>(null)
 
@@ -95,21 +97,20 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
     const fileRef = useRef<HTMLInputElement>(null)
 
     async function handleArchivo(e: React.ChangeEvent<HTMLInputElement>) {
-        const files = Array.from(e.target.files || [])
-        const nuevas = await Promise.all(files.map(async file => {
-            return new Promise<{data: string, mime_type: string, preview: string}>((resolve) => {
-            const reader = new FileReader()
-            reader.onload = () => {
-                const base64  = (reader.result as string).split(',')[1]
-                const preview = reader.result as string
-                resolve({ data: base64, mime_type: file.type, preview })
-            }
-            reader.readAsDataURL(file)
-            })
-        }))
-        // Enviar con las imágenes directamente
-        onEnviar(nuevas.map(i => ({ data: i.data, mime_type: i.mime_type })))
-        if (fileRef.current) fileRef.current.value = ''
+      const files = Array.from(e.target.files || [])
+      const nuevas = await Promise.all(files.map(file =>
+        new Promise<{data: string, mime_type: string, preview: string}>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve({
+            data:    (reader.result as string).split(',')[1],
+            mime_type: file.type,
+            preview: reader.result as string,
+          })
+          reader.readAsDataURL(file)
+        })
+      ))
+      setImagenesB(prev => [...prev, ...nuevas].slice(0, 4))
+      if (fileRef.current) fileRef.current.value = ''
     }
 
     const [dragging, setDragging] = useState(false)
@@ -251,6 +252,22 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
         </div>
 
         {/* Input centrado en bienvenida */}
+        {imagenesB.length > 0 && (
+        <div className="flex gap-2 mb-3 max-w-3xl mx-auto">
+          {imagenesB.map((img, i) => (
+            <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0"
+              style={{ border: '1px solid rgba(160,120,255,0.3)' }}>
+              <img src={img.preview} alt="" className="w-full h-full object-cover" />
+              <button
+                onClick={() => setImagenesB(prev => prev.filter((_, j) => j !== i))}
+                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer border-none text-[9px] font-bold"
+                style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
         <div className="w-full relative">
             <div className="absolute inset-0 rounded-2xl pointer-events-none" style={{
                 background: G, backgroundSize: '300% 300%', animation: 'aiPastel 5s ease infinite',
@@ -293,7 +310,7 @@ export default function AIBienvenida({ onSugerencia, nombreUsuario, input, carga
                 }}
                 />
 
-                <button onClick={() => onEnviar()} disabled={!input.trim() || cargando}
+                <button onClick={() => onEnviar(imagenesB.length > 0 ? imagenesB.map(i => ({ data: i.data, mime_type: i.mime_type })) : undefined)}  disabled={!input.trim() || cargando}
                 className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer border-none flex-shrink-0 overflow-hidden relative transition-all mb-0.5"
                 style={{ background: '#0A0814', opacity: input.trim() && !cargando ? 1 : 0.3 }}>
                 {input.trim() && !cargando && (
