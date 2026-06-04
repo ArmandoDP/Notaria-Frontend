@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import ModalConfirm from '@/components/ui/ModalConfirm'
 
 interface Props {
   documentos: any[]
@@ -21,6 +23,7 @@ const docEstadoColor: Record<string, { bg: string, color: string, label: string 
 export default function TabDocs({ documentos, tramite, ticket, onSubir, onValidar }: Props) {
   const [docModal, setDocModal] = useState<any | null>(null)
   const partesConfig: any[] = tramite?.requiere_partes || []
+  const [confirmEliminar, setConfirmEliminar] = useState(false)
 
   const docsPartes = partesConfig.map((parte: any) => ({
     parte,
@@ -238,6 +241,13 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                       }
                     }} />
                 </label>
+                {/* Botón eliminar en modal */}
+                <button
+                  onClick={() => setConfirmEliminar(true)}
+                  className="px-3 py-1.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
+                  style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                  🗑 Eliminar
+                </button>
                 {/* Abrir en nueva pestaña */}
                 <a href={docModal.archivo_url} target="_blank" rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-xl text-[12px] font-semibold no-underline"
@@ -301,6 +311,26 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             )}
           </div>
         </div>
+      )}
+      {/* Modal de confirmación — fuera del modal principal: */}
+      {confirmEliminar && (
+        <ModalConfirm
+          titulo="Eliminar documento"
+          descripcion={`¿Eliminar "${docModal?.doc_tipos_config?.nombre}"? El documento quedará como pendiente y el cliente deberá subirlo de nuevo.`}
+          labelConfirm="Sí, eliminar"
+          peligroso
+          onConfirm={async () => {
+            const supabase = createClient()
+            await supabase.from('documentos').update({
+              estado:      'pendiente',
+              archivo_url: null,
+              datos_ocr:   null,
+            }).eq('id', docModal.id)
+            setConfirmEliminar(false)
+            setDocModal(null)
+          }}
+          onCancel={() => setConfirmEliminar(false)}
+        />
       )}
     </>
   )
