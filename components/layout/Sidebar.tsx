@@ -258,11 +258,14 @@ export default function Sidebar() {
               <div className="text-[12px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.7)' }}>
                 {usuario?.nombre || 'Usuario'}
               </div>
-              <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.7)' }}>
                 {rolLabel[usuario?.rol || ''] || usuario?.rol || ''}
                 {usuario?.area && ` · ${usuario.area}`}
               </div>
             </div>
+            <div className="text-[10px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                Cerrar sesión
+              </div>
             <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>↗</span>
           </button>
         </div>
