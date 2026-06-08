@@ -25,10 +25,20 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
   const partesConfig: any[] = tramite?.requiere_partes || []
   const [confirmEliminar, setConfirmEliminar] = useState(false)
 
+  const [avisoParteId,    setAvisoParteId]    = useState<string | null>(null)
+  const [avisoParteLabel, setAvisoParteLabel] = useState('')
+  const [archivoPendiente, setArchivoPendiente] = useState<{
+    docId: string, docTipoId: string, parteId: string | null, archivo: File
+  } | null>(null)
+
+  // Set de partes que ya vieron el aviso — para no repetirlo
+  const [partesAvisadas, setPartesAvisadas] = useState<Set<string>>(new Set())
+
+ // Incluir TODAS las partes del trámite — tengan docs o no
   const docsPartes = partesConfig.map((parte: any) => ({
     parte,
     docs: documentos.filter((d: any) => d.doc_tipos_config?.para_rol === parte.rol),
-  })).filter(g => g.docs.length > 0)
+  }))
 
   const docsOperacion = documentos.filter((d: any) =>
     !d.doc_tipos_config?.para_rol ||
@@ -44,7 +54,23 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
 
   const isPDF = (url: string) => url?.toLowerCase().includes('.pdf')
 
+  function handleSubirConAviso(
+    docId: string, docTipoId: string, parteId: string | null,
+    archivo: File, rolLabel: string
+  ) {
+    // Si la parte ya vio el aviso o no tiene parteId, subir directo
+    if (!parteId || partesAvisadas.has(parteId)) {
+      onSubir(docId, docTipoId, parteId, archivo)
+      return
+    }
+    // Primera vez — mostrar aviso
+    setArchivoPendiente({ docId, docTipoId, parteId, archivo })
+    setAvisoParteId(parteId)
+    setAvisoParteLabel(rolLabel)
+  }
+  
   const renderDoc = (doc: any) => {
+
     const est       = docEstadoColor[doc.estado] || docEstadoColor.pendiente
     const tieneFile = !!doc.archivo_url
     return (
@@ -134,12 +160,12 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
               <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.pdf"
                 onChange={e => {
                   const archivo = e.target.files?.[0]
-                  if (archivo) onSubir(doc.id, doc.doc_tipo_id, doc.parte_id, archivo)
+                  if (archivo) handleSubirConAviso(doc.id, doc.doc_tipo_id, doc.parte_id, archivo, doc.rolLabel)
                 }} />
             </label>
           )}
 
-          {/* Resubir — disponible en cualquier estado si ya tiene archivo */}
+          {/* Resubir */}
           {doc.estado !== 'pendiente' && (
             <label className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer"
               style={{ background: '#FEF3C7', color: '#854F0B' }}>
@@ -148,6 +174,7 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                 onChange={e => {
                   const archivo = e.target.files?.[0]
                   if (archivo) onSubir(doc.id, doc.doc_tipo_id, doc.parte_id, archivo)
+                  // Resubir no muestra aviso
                 }} />
             </label>
           )}
@@ -166,7 +193,7 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
     )
   }
 
-  const renderGrupo = (titulo: string, docs: any[], avatar: string, color: string, extra?: string) => (
+  const renderGrupo = (titulo: string, docs: any[], avatar: string, color: string, extra?: string, sinDocs?: boolean) => (
     <div key={titulo}>
       <div className="flex items-center gap-2 mb-2">
         <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
@@ -177,7 +204,22 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
         {extra && <span className="text-[10px]" style={{ color: '#9C9890' }}>{extra}</span>}
       </div>
       <div className="flex flex-col gap-2 ml-2">
-        {docs.map(renderDoc)}
+        {sinDocs ? (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl"
+            style={{ background: '#FEF3C7', border: '1px solid rgba(240,180,41,0.3)' }}>
+            <span className="text-[14px] flex-shrink-0">⚠️</span>
+            <div>
+              <div className="text-[12px] font-semibold" style={{ color: '#92400E' }}>
+                Sin documentos configurados
+              </div>
+              <div className="text-[11px] mt-0.5 leading-relaxed" style={{ color: '#92400E', opacity: 0.8 }}>
+                Esta parte no tiene documentos asignados. Ve al configurador del trámite y agrega los documentos requeridos en la sección "Partes y documentos".
+              </div>
+            </div>
+          </div>
+        ) : (
+          docs.map(renderDoc)
+        )}
       </div>
     </div>
   )
@@ -195,7 +237,10 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             docs,
             parte.avatar || parte.rol.slice(0, 2).toUpperCase(),
             parte.color || tramite?.color_hex || '#666',
-            `${docs.filter((d: any) => d.estado === 'validado').length}/${docs.length} validados`
+            docs.length > 0
+              ? `${docs.filter((d: any) => d.estado === 'validado').length}/${docs.length} validados`
+              : undefined,
+            docs.length === 0  // ← sinDocs flag
           )
         )}
         {docsSinClasificar.length > 0 && renderGrupo('Sin clasificar', docsSinClasificar, '?', '#6B7280')}
@@ -355,6 +400,70 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
           }}
           onCancel={() => setConfirmEliminar(false)}
         />
+      )}
+      {/* Modal aviso primera subida */}
+      {avisoParteId && archivoPendiente && (
+        <div className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
+                style={{ background: '#FEF3C7' }}>
+                📋
+              </div>
+              <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
+                Antes de subir el documento
+              </div>
+              <div className="text-[13px] leading-relaxed mb-4" style={{ color: '#555' }}>
+                Para que la IA pueda validar correctamente este documento, asegúrate de que los datos de la parte <strong style={{ color: '#111' }}>{avisoParteLabel.replace(/_/g, ' ')}</strong> estén completos en la pestaña de <strong style={{ color: '#111' }}>Partes</strong>.
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {[
+                  { emoji: '👤', texto: 'Nombre completo tal como aparece en documentos oficiales.' },
+                  { emoji: '🪪', texto: 'CURP y RFC correctos para que la IA los compare con el documento.' },
+                  { emoji: '📄', texto: 'El documento debe pertenecer a esta parte — no subas documentos de otra persona.' },
+                  { emoji: '✅', texto: 'Solo documentos vigentes y legibles serán validados correctamente.' },
+                ].map((tip, i) => (
+                  <div key={i} className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
+                    style={{ background: '#F7F7F5' }}>
+                    <span className="text-[16px] flex-shrink-0">{tip.emoji}</span>
+                    <span className="text-[12px] leading-relaxed" style={{ color: '#444' }}>{tip.texto}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+            <div className="flex gap-3 px-6 py-4">
+              <button onClick={() => {
+                setAvisoParteId(null)
+                setArchivoPendiente(null)
+              }}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+                style={{ background: '#F3F4F6', color: '#444' }}>
+                Cancelar
+              </button>
+              <button onClick={() => {
+                if (archivoPendiente) {
+                  // Marcar esta parte como avisada para no repetir
+                  setPartesAvisadas(prev => new Set([...prev, archivoPendiente.parteId!]))
+                  onSubir(archivoPendiente.docId, archivoPendiente.docTipoId, archivoPendiente.parteId, archivoPendiente.archivo)
+                }
+                setAvisoParteId(null)
+                setArchivoPendiente(null)
+              }}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
+                style={{ background: '#111', color: '#fff' }}>
+                Sí, datos correctos →
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

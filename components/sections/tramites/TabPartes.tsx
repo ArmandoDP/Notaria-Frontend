@@ -304,8 +304,23 @@ export default function TabPartes({
                 )}
               </div>
             ) : (
-              <div className="px-5 py-4 text-[12px] text-center" style={{ color: '#CCC' }}>
-                Sin documentos — usa "+ Doc" para agregar
+              <div className="px-5 py-4 flex flex-col items-center gap-2">
+                <div className="text-[12px] text-center" style={{ color: '#CCC' }}>
+                  Sin documentos configurados para esta parte
+                </div>
+                {isAdmin && (
+                  <button
+                    onClick={() => setModalDoc(parte.rol)}
+                    className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-2 border-dashed transition-all mx-2 mt-1"
+                    style={{
+                      borderColor: `${color}40`,
+                      color,
+                      background:  `${color}05`,
+                      width:       'calc(100% - 16px)',
+                    }}>
+                    + Agregar documento
+                  </button>
+                )}
               </div>
             )}
           </div>
