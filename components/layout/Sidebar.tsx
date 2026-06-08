@@ -9,12 +9,12 @@ import ModalConfirm from '@/components/ui/ModalConfirm'
 
 const navItems = [
   { section: 'Operación' },
-  { href: '/',       label: 'Kanban',          icon: '▦' },
+  { href: '/',       label: 'Tablero Principal',          icon: '▦' },
   { href: '/nueva',  label: 'Nueva solicitud', icon: '✦' },
-  // { href: '/chats',  label: 'Chats WhatsApp',  icon: '💬' },
+  { href: '/chats',  label: 'Chats WhatsApp',  icon: '💬' },
   { section: 'Reportes' },
   // { href: '/area',      label: 'Tablero por área', icon: '◧' },
-  { href: '/dashboard', label: 'Dashboard',        icon: '📊' },
+  { href: '/dashboard', label: 'Tablero de Control',        icon: '📊' },
   { href: '/folios',    label: 'Buscar folios',     icon: '⌕' },
 ]
 

@@ -36,22 +36,24 @@ export default function Topbar() {
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
+      console.log('auth email:', user?.email)
+
       if (!user) return
 
-      const n = user.user_metadata?.nombre || user.email || ''
-      const r = user.user_metadata?.role || 'agente'
-      setNombre(n)
-      setRol(r)
-      setInitials(n.split(' ').map((x: string) => x[0]).join('').slice(0, 2).toUpperCase())
-
-      // Buscar usuario_id en usuarios_sistema
-      const { data: us } = await supabase
+      // Buscar usuario en usuarios_sistema — aquí está el rol real
+      const { data: us, error } = await supabase
         .from('usuarios_sistema')
-        .select('id')
-        .eq('email', user.email)
+        .select('id, nombre, rol, areas(nombre)')
+        .eq('email', user.email || '')
         .single()
+      
+      console.log('us:', us, 'error:', error)
 
       if (us) {
+        const n = us.nombre || user.email || ''
+        setNombre(n)
+        setRol(us.rol)
+        setInitials(n.split(' ').map((x: string) => x[0]).join('').slice(0, 2).toUpperCase())
         setUsuarioId(us.id)
         cargarNotifs(us.id)
       }

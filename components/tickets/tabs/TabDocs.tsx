@@ -104,15 +104,27 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             {est.label}
           </span>
 
-          {/* Ver documento */}
-          {tieneFile && (
-            <button onClick={() => setDocModal(doc)}
+          {(doc.estado === 'ocr_procesado' || doc.estado === 'recibido') && (
+            <button type="button" onClick={() => onValidar(doc.id)}
               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none"
-              style={{ background: '#F3F4F6', color: '#555' }}
-              title="Ver documento">
-              👁
+              style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+              Validar
             </button>
           )}
+
+          {/* Descargar documento */}
+          {/* {tieneFile && (
+            <a
+              href={doc.archivo_url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold no-underline"
+              style={{ background: '#EAF3DE', color: '#3B6D11' }}
+              title="Descargar documento">
+              ⬇
+            </a>
+          )} */}
 
           {/* Subir — siempre disponible si está pendiente */}
           {doc.estado === 'pendiente' && (
@@ -140,11 +152,13 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             </label>
           )}
 
-          {(doc.estado === 'ocr_procesado' || doc.estado === 'recibido') && (
-            <button type="button" onClick={() => onValidar(doc.id)}
+          {/* Ver documento */}
+          {tieneFile && (
+            <button onClick={() => setDocModal(doc)}
               className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none"
-              style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-              Validar
+              style={{ background: '#F3F4F6', color: '#555' }}
+              title="Ver documento">
+              👁
             </button>
           )}
         </div>
@@ -248,6 +262,16 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                   style={{ background: '#FEE2E2', color: '#991B1B' }}>
                   🗑 Eliminar
                 </button>
+                {/* Descargar documento */}
+                <a
+                  href={docModal.archivo_url}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl text-[12px] font-semibold no-underline"
+                  style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+                  ⬇ Descargar
+                </a>
                 {/* Abrir en nueva pestaña */}
                 <a href={docModal.archivo_url} target="_blank" rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-xl text-[12px] font-semibold no-underline"
