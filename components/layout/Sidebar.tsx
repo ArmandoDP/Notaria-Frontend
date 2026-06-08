@@ -9,7 +9,7 @@ import ModalConfirm from '@/components/ui/ModalConfirm'
 
 const navItems = [
   { section: 'Operación' },
-  { href: '/',       label: 'Tablero Principal',          icon: '▦' },
+  { href: '/',       label: 'Tablero de Solicitudes',          icon: '▦' },
   { href: '/nueva',  label: 'Nueva solicitud', icon: '✦' },
   { href: '/chats',  label: 'Chats WhatsApp',  icon: '💬' },
   { section: 'Reportes' },
