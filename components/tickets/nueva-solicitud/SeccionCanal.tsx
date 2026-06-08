@@ -1,5 +1,5 @@
 const CANALES = [
-  { id: 'front_desk',   label: 'Front Desk',  icon: '🏢' },
+  { id: 'front_desk',   label: 'Recepción',  icon: '🏢' },
   { id: 'whatsapp',     label: 'WhatsApp',     icon: '💬' },
   { id: 'telefono',     label: 'Teléfono',     icon: '📞' },
   { id: 'mail',         label: 'Correo',       icon: '✉️'  },

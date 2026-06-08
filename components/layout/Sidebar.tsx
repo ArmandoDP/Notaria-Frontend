@@ -34,6 +34,8 @@ export default function Sidebar() {
   // Agrega estados:
   const [modalEliminar, setModalEliminar] = useState<{ id: string, nombre: string } | null>(null)
 
+  const [modalLogout, setModalLogout] = useState(false)
+
   useEffect(() => {
     supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('orden').then(({ data }) => {
       if (data) setTramites(data)
@@ -245,7 +247,7 @@ export default function Sidebar() {
         
         {/* Footer — usuario */}
         <div className="p-2.5 relative" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button onClick={handleLogout}
+          <button onClick={() => setModalLogout(true)}
             className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] transition-all duration-200 cursor-pointer border-none text-left"
             style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div className="w-[26px] h-[26px] rounded-lg flex items-center justify-center text-[9px] font-black text-black flex-shrink-0"
@@ -258,6 +260,7 @@ export default function Sidebar() {
               </div>
               <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
                 {rolLabel[usuario?.rol || ''] || usuario?.rol || ''}
+                {usuario?.area && ` · ${usuario.area}`}
               </div>
             </div>
             <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>↗</span>
@@ -289,6 +292,43 @@ export default function Sidebar() {
             setModalEliminar(null)
           }}
         />
+      )}
+      {modalLogout && (
+        <div className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>
+          <div className="rounded-2xl w-full max-w-xs mx-4 overflow-hidden"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}>
+
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: '#F7F7F5' }}>
+                <span className="text-[24px]">👋</span>
+              </div>
+              <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>
+                ¿Cerrar sesión?
+              </div>
+              <div className="text-[13px]" style={{ color: '#9C9890' }}>
+                Se cerrará tu sesión en este dispositivo. Puedes volver a entrar con tu correo.
+              </div>
+            </div>
+
+            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+            <div className="flex gap-3 px-6 py-4">
+              <button onClick={() => setModalLogout(false)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+                style={{ background: '#F3F4F6', color: '#444' }}>
+                Cancelar
+              </button>
+              <button onClick={handleLogout}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
+                style={{ background: '#111', color: '#fff' }}>
+                Sí, cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
