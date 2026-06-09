@@ -37,7 +37,7 @@ export default function Sidebar() {
   const [modalLogout, setModalLogout] = useState(false)
 
   useEffect(() => {
-    supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('orden').then(({ data }) => {
+    supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('nombre').then(({ data }) => {
       if (data) setTramites(data)
     })
     supabase.auth.getUser().then(({ data: { user } }) => {

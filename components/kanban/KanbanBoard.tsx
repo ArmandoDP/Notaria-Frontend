@@ -11,6 +11,7 @@ const COLUMNAS = [
   { id: 'asignado',          label: 'Asignado',            color: '#185FA5', bg: 'rgba(24,95,165,0.1)'  },
   { id: 'folio_dba',         label: 'Folio DBA',           color: '#854F0B', bg: 'rgba(133,79,11,0.1)'  },
   { id: 'escritura_dba',     label: 'Escritura DBA',       color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'  },
+  { id: 'cancelado',     label: 'Cancelado',      color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
 ]
 
 interface Props {
@@ -182,45 +183,51 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
 }
 
 function TicketCard({ ticket }: { ticket: Ticket }) {
-  const vencido   = isPast(new Date(ticket.sla_vence_at))
+  const cancelado = ticket.estado === 'cancelado'
+  const vencido   = !cancelado && isPast(new Date(ticket.sla_vence_at))
   const tramite   = ticket.tramites_config as any
   const area      = ticket.areas as any
   const partes    = (ticket.partes as any[]) || []
   const primero   = partes[0]?.nombre_completo
-
-  const slaLabel = formatDistanceToNow(new Date(ticket.sla_vence_at), { locale: es, addSuffix: true })
+  const slaLabel  = formatDistanceToNow(new Date(ticket.sla_vence_at), { locale: es, addSuffix: true })
 
   return (
     <a href={`/tickets/${ticket.id}`}
-      className="block rounded-xl p-3 no-underline transition-all duration-200 hover:-translate-y-0.5 group"
+      className="block rounded-xl p-3 no-underline transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
       style={{
-        background: '#fff',
-        border: '1px solid rgba(0,0,0,0.06)',
-        borderLeft: `3px solid ${tramite?.color_hex || '#ddd'}`,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        background:   '#fff',
+        border:       '1px solid rgba(0,0,0,0.06)',
+        borderLeft:   `3px solid ${tramite?.color_hex || '#ddd'}`,
+        boxShadow:    '0 1px 3px rgba(0,0,0,0.04)',
       }}>
 
-      <div className="text-[9px] font-bold tracking-wider mb-1.5" style={{ color: '#C0BAB2', fontFamily: 'monospace' }}>
-        {ticket.numero}
-      </div>
-
-      <div className="text-[11.5px] font-semibold leading-snug mb-1" style={{ color: '#1A1917' }}>
-        {tramite?.nombre || 'Trámite'}
-      </div>
-
-      {primero && (
-        <div className="text-[10.5px] mb-2.5 truncate" style={{ color: '#AAA' }}>
-          {primero}
+      {/* Overlay oscuro para cancelados */}
+      {cancelado && (
+        <div className="absolute inset-0 z-10 rounded-xl flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(1px)' }}>
+          <span className="text-[9px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.15)' }}>
+            Cancelado
+          </span>
         </div>
       )}
 
+      {/* Contenido normal sin cambiar nada */}
+      <div className="text-[9px] font-bold tracking-wider mb-1.5" style={{ color: '#C0BAB2', fontFamily: 'monospace' }}>
+        {ticket.numero}
+      </div>
+      <div className="text-[11.5px] font-semibold leading-snug mb-1" style={{ color: '#1A1917' }}>
+        {tramite?.nombre || 'Trámite'}
+      </div>
+      {primero && (
+        <div className="text-[10.5px] mb-2.5 truncate" style={{ color: '#AAA' }}>{primero}</div>
+      )}
       <div className="flex items-center justify-between gap-1">
         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md truncate"
           style={{ background: `${area?.color_hex}18`, color: area?.color_hex || '#666' }}>
           {area?.nombre || '—'}
         </span>
-        <span className="text-[9.5px] font-medium flex-shrink-0"
-          style={{ color: vencido ? '#E24B4A' : '#B0ADAA' }}>
+        <span className="text-[9.5px] font-medium flex-shrink-0" style={{ color: vencido ? '#E24B4A' : '#B0ADAA' }}>
           {vencido ? '⚠ ' : ''}{slaLabel}
         </span>
       </div>

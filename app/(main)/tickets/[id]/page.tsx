@@ -18,7 +18,7 @@ export default async function TicketPage({ params }: { params: { id: string } })
       areas (*),
       partes (*),
       documentos (*, doc_tipos_config(*)),
-      ticket_eventos (*),
+      ticket_eventos (*, usuarios_sistema(nombre, avatar_letras, avatar_color, email, areas(nombre))),
       ticket_preguntas (*)
     `).eq('id', params.id).single(),
     supabase.from('tramites_config').select('id, nombre, color_hex').eq('activo', true).order('orden'),

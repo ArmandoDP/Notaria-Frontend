@@ -33,6 +33,8 @@ interface Props {
   onEnviarRecordatorio:     () => void
   onDescargarExpediente:    () => void
   onCopiarLink:             () => void
+  onCancelar: () => void
+  onReactivar: () => void
   onCopiarLinkParte:        (url: string, rolLabel: string) => void
 }
 
@@ -45,7 +47,7 @@ export default function TicketSidebar({
   onCambiarEstadoFolioDBA, onCambiarEstadoEscritura,
   onSetReasignando, onNuevoTramiteId, onNuevoAreaId,
   onGuardarReasignacion, onEnviarRecordatorio,
-  onCopiarLink, onCopiarLinkParte,
+  onCopiarLink, onCopiarLinkParte, onCancelar, onReactivar,
 }: Props) {
 
   // ← Hook DENTRO del componente
@@ -55,7 +57,9 @@ export default function TicketSidebar({
   const area    = ticket.areas
 
   const [descargando, setDescargando] = useState(false)
-  const [fase,        setFase]        = useState('')
+  const [fase, setFase] = useState('')
+  const [modalCancelar, setModalCancelar] = useState(false)
+  const [reactivando, setReactivando] = useState(false)
 
   async function descargar() {
     setDescargando(true)
@@ -346,6 +350,35 @@ export default function TicketSidebar({
         </div>
       </div>
 
+      {/* Cancelar / Reactivar ticket */}
+      {estado !== 'cancelado' ? (
+        <div className="bg-white rounded-2xl p-4"
+          style={{ border: '1px solid rgba(226,75,74,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <button onClick={() => setModalCancelar(true)}
+            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
+            style={{ background: '#FEE2E2', color: '#991B1B' }}>
+            🚫 Cancelar expediente
+          </button>
+          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
+            Esta acción marcará el expediente como cancelado
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl p-4"
+          style={{ border: '1px solid rgba(59,109,17,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
+            Expediente cancelado
+          </div>
+          <button onClick={() => setReactivando(true)}
+            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+            style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+            ✅ Reactivar expediente
+          </button>
+          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
+            El expediente volverá al estado Asignado
+          </div>
+        </div>
+      )}
       {/* Modal compresión */}
       {descargando && (
         <div className="fixed inset-0 flex items-center justify-center z-50"
@@ -374,6 +407,94 @@ export default function TicketSidebar({
         </div>
       )}
 
+      {modalCancelar && (
+        <div className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+            <div className="px-6 pt-6 pb-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
+                style={{ background: '#FEE2E2' }}>
+                🚫
+              </div>
+              <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
+                ¿Cancelar este expediente?
+              </div>
+              <div className="text-[13px] leading-relaxed mb-3" style={{ color: '#555' }}>
+                El expediente <strong style={{ color: '#111' }}>{ticket.numero}</strong> será marcado como cancelado.
+                Podrás seguir consultándolo pero ya no aparecerá en el flujo activo.
+              </div>
+              <div className="px-3 py-2.5 rounded-xl text-[12px]"
+                style={{ background: '#FEF3C7', color: '#92400E' }}>
+                ⚠️ Esta acción no elimina el expediente — solo lo marca como cancelado.
+              </div>
+            </div>
+
+            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+            <div className="flex gap-3 px-6 py-4">
+              <button onClick={() => setModalCancelar(false)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+                style={{ background: '#F3F4F6', color: '#444' }}>
+                No, mantener
+              </button>
+              <button onClick={() => {
+                onCancelar()
+                setModalCancelar(false)
+              }}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
+                style={{ background: '#991B1B', color: '#fff' }}>
+                Sí, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reactivando && (
+        <div className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+            <div className="px-6 pt-6 pb-6 flex flex-col items-center text-center gap-4">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-[32px]"
+                style={{ background: '#EAF3DE' }}>
+                ✅
+              </div>
+              <div>
+                <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>
+                  ¿Reactivar este expediente?
+                </div>
+                <div className="text-[13px]" style={{ color: '#9C9890' }}>
+                  El expediente <strong style={{ color: '#111' }}>{ticket.numero}</strong> volverá al estado <strong style={{ color: '#111' }}>Asignado</strong> y aparecerá en el flujo activo.
+                </div>
+              </div>
+
+              <div className="flex gap-3 w-full">
+                <button onClick={() => setReactivando(false)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+                  style={{ background: '#F3F4F6', color: '#444' }}>
+                  Cancelar
+                </button>
+                <button onClick={async () => {
+                  // Mostrar progreso
+                  const btn = document.getElementById('btn-reactivar')
+                  if (btn) btn.textContent = 'Reactivando...'
+                  await onReactivar()
+                  setReactivando(false)
+                }}
+                  id="btn-reactivar"
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
+                  style={{ background: '#3B6D11', color: '#fff' }}>
+                  Sí, reactivar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <style jsx>{`
         @keyframes zipProgress { 0%{stroke-dashoffset:175} 50%{stroke-dashoffset:44} 100%{stroke-dashoffset:175} }
         @keyframes zipDot { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-6px);opacity:1} }

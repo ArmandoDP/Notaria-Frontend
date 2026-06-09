@@ -56,15 +56,15 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
 
   function handleSubirConAviso(
     docId: string, docTipoId: string, parteId: string | null,
-    archivo: File, rolLabel: string
+    archivo: File | null, rolLabel: string
   ) {
-    // Si la parte ya vio el aviso o no tiene parteId, subir directo
+    // Si ya vio el aviso o no tiene parteId, abrir el input directo
     if (!parteId || partesAvisadas.has(parteId)) {
-      onSubir(docId, docTipoId, parteId, archivo)
+      document.getElementById(`file-input-${docId}`)?.click()
       return
     }
-    // Primera vez — mostrar aviso
-    setArchivoPendiente({ docId, docTipoId, parteId, archivo })
+    // Primera vez — mostrar aviso y guardar referencia al docId
+    setArchivoPendiente({ docId, docTipoId, parteId, archivo: null as any })
     setAvisoParteId(parteId)
     setAvisoParteLabel(rolLabel)
   }
@@ -154,16 +154,25 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
 
           {/* Subir — siempre disponible si está pendiente */}
           {doc.estado === 'pendiente' && (
-            <label className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer"
+          <>
+            <button
+              onClick={() => handleSubirConAviso(
+                doc.id, doc.doc_tipo_id, doc.parte_id,
+                null as any, doc.doc_tipos_config?.para_rol || ''
+              )}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none"
               style={{ background: '#E6F1FB', color: '#185FA5' }}>
               Subir
-              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.pdf"
-                onChange={e => {
-                  const archivo = e.target.files?.[0]
-                  if (archivo) handleSubirConAviso(doc.id, doc.doc_tipo_id, doc.parte_id, archivo, doc.rolLabel)
-                }} />
-            </label>
-          )}
+            </button>
+            <input
+              id={`file-input-${doc.id}`}
+              type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.pdf"
+              onChange={e => {
+                const archivo = e.target.files?.[0]
+                if (archivo) onSubir(doc.id, doc.doc_tipo_id, doc.parte_id, archivo)
+              }} />
+          </>
+        )}
 
           {/* Resubir */}
           {doc.estado !== 'pendiente' && (
@@ -408,7 +417,6 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
           <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
             style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
 
-            {/* Header */}
             <div className="px-6 pt-6 pb-4">
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
                 style={{ background: '#FEF3C7' }}>
@@ -418,15 +426,19 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                 Antes de subir el documento
               </div>
               <div className="text-[13px] leading-relaxed mb-4" style={{ color: '#555' }}>
-                Para que la IA pueda validar correctamente este documento, asegúrate de que los datos de la parte <strong style={{ color: '#111' }}>{avisoParteLabel.replace(/_/g, ' ')}</strong> estén completos en la pestaña de <strong style={{ color: '#111' }}>Partes</strong>.
+                Para que la IA valide correctamente, asegúrate de que los datos de{' '}
+                <strong style={{ color: '#111' }}>
+                  {avisoParteLabel.replace(/_/g, ' ')}
+                </strong>{' '}
+                estén completos en la pestaña <strong style={{ color: '#111' }}>Partes</strong>.
               </div>
 
               <div className="flex flex-col gap-2">
                 {[
                   { emoji: '👤', texto: 'Nombre completo tal como aparece en documentos oficiales.' },
                   { emoji: '🪪', texto: 'CURP y RFC correctos para que la IA los compare con el documento.' },
-                  { emoji: '📄', texto: 'El documento debe pertenecer a esta parte — no subas documentos de otra persona.' },
-                  { emoji: '✅', texto: 'Solo documentos vigentes y legibles serán validados correctamente.' },
+                  { emoji: '📄', texto: 'El documento debe pertenecer a esta parte específica.' },
+                  { emoji: '✅', texto: 'Solo documentos vigentes y legibles serán validados.' },
                 ].map((tip, i) => (
                   <div key={i} className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl"
                     style={{ background: '#F7F7F5' }}>
@@ -440,19 +452,16 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
 
             <div className="flex gap-3 px-6 py-4">
-              <button onClick={() => {
-                setAvisoParteId(null)
-                setArchivoPendiente(null)
-              }}
+              <button onClick={() => { setAvisoParteId(null); setArchivoPendiente(null) }}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
                 style={{ background: '#F3F4F6', color: '#444' }}>
                 Cancelar
               </button>
               <button onClick={() => {
                 if (archivoPendiente) {
-                  // Marcar esta parte como avisada para no repetir
                   setPartesAvisadas(prev => new Set([...prev, archivoPendiente.parteId!]))
-                  onSubir(archivoPendiente.docId, archivoPendiente.docTipoId, archivoPendiente.parteId, archivoPendiente.archivo)
+                  // Abrir el explorador de archivos después de confirmar
+                  document.getElementById(`file-input-${archivoPendiente.docId}`)?.click()
                 }
                 setAvisoParteId(null)
                 setArchivoPendiente(null)

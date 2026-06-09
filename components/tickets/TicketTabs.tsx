@@ -2,10 +2,11 @@ import TabDocs     from './tabs/TabDocs'
 import TabPartes   from './tabs/TabPartes'
 import TabHistorial from './tabs/TabHistorial'
 import TabPreguntas from './tabs/TabPreguntas'
+import TabObservaciones from './tabs/TabObservaciones'
 
 interface Props {
-  activeTab:  'docs' | 'partes' | 'historial' | 'preguntas'
-  onTabChange: (tab: 'docs' | 'partes' | 'historial' | 'preguntas') => void
+  activeTab:  'docs' | 'partes' | 'historial' | 'preguntas' | 'observaciones'
+  onTabChange: (tab: 'docs' | 'partes' | 'historial' | 'preguntas' | 'observaciones') => void
   documentos:  any[]
   partes:      any[]
   eventos:     any[]
@@ -26,6 +27,7 @@ export default function TicketTabs({
     { id: 'partes',    label: `Partes (${partes.length})`          },
     { id: 'preguntas', label: 'Preguntas'                          },
     { id: 'historial', label: `Historial (${eventos.length})`      },
+    { id: 'observaciones', label: 'Observaciones'                  },
   ] as const
 
   return (
@@ -52,6 +54,7 @@ export default function TicketTabs({
         {activeTab === 'docs'      && <TabDocs documentos={documentos} tramite={tramite} ticket={ticket} onSubir={onSubir} onValidar={onValidar} />}
         {activeTab === 'partes'    && <TabPartes partes={partes} tramite={tramite} ticketId={ticket.id} />}
         {activeTab === 'preguntas' && <TabPreguntas ticketId={ticket.id} preguntas={preguntas} />}
+        {activeTab === 'observaciones' && <TabObservaciones ticketId={ticket.id}/>}
         {activeTab === 'historial' && <TabHistorial eventos={eventos} />}
       </div>
     </div>

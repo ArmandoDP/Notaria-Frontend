@@ -30,7 +30,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   const [documentos,  setDocumentos]  = useState(ticket.documentos || [])
   const [estado,      setEstado]      = useState(ticket.estado)
   const [saving,      setSaving]      = useState(false)
-  const [activeTab,   setActiveTab]   = useState<'docs' | 'partes' | 'historial' | 'preguntas'>('docs')
+  const [activeTab,   setActiveTab]   = useState<'docs' | 'partes' | 'historial' | 'preguntas' | 'observaciones'>('docs')
   const [folioDBA,    setFolioDBA]    = useState(ticket.folio_dba     || '')
   const [folioEscritura, setFolioEscritura] = useState(ticket.folio_escritura || '')
   const [folioDBAVinculado,        setFolioDBAVinculado]        = useState(!!ticket.folio_dba)
@@ -39,8 +39,21 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   const [nuevoTramiteId, setNuevoTramiteId] = useState(ticket.tramite_id)
   const [nuevoAreaId, setNuevoAreaId] = useState(ticket.area_id)
   const [modalLink, setModalLink] = useState(false)
-  const [modalLinkParte, setModalLinkParte] = useState<{url: string, rolLabel: string} | null>(null)
+  const [modalLinkParte, setModalLinkParte] = useState<{ url: string, rolLabel: string } | null>(null)
+  const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null)
 
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('usuarios_sistema')
+        .select('id')
+        .eq('email', user.email || '')
+        .single()
+      if (data) setUsuarioActualId(data.id)
+    })
+  }, [])
+  
   // Realtime docs
   useEffect(() => {
     const channel = supabase.channel(`docs-${ticket.id}`)
@@ -57,6 +70,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
       ticket_id:   ticket.id,
       tipo:        'estado_cambio',
       descripcion: `Estado: ${estado} → ${nuevoEstado}`,
+      usuario_id:  usuarioActualId,
     })
 
     // Notificar al área
@@ -93,7 +107,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
     if (!folioDBA.trim()) return
     setSaving(true)
     await supabase.from('tickets').update({ folio_dba: folioDBA }).eq('id', ticket.id)
-    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'folio_dba', descripcion: `Folio DBA: ${folioDBA}` })
+    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'folio_dba', descripcion: `Folio DBA: ${folioDBA}`, usuario_id:  usuarioActualId })
     setFolioDBAVinculado(true)
     setSaving(false)
   }
@@ -107,10 +121,47 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
     setSaving(false)
   }
 
+  async function cancelarTicket() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('tickets')
+      .update({ estado: 'cancelado' })
+      .eq('id', ticket.id)
+    
+    console.log('>>> cancelar result:', error)
+    
+    if (error) {
+      alert(`Error: ${error.message}`)
+      setSaving(false)
+      return
+    }
+    
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'estado_cambio',
+      descripcion: 'Expediente cancelado',
+      usuario_id:  usuarioActualId,
+    })
+    setSaving(false)
+    router.push('/')
+  }
+  
+  async function reactivarTicket() {
+    setSaving(true)
+    await supabase.from('tickets').update({ estado: 'asignado' }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'estado_cambio',
+      descripcion: 'Expediente reactivado',
+      usuario_id:  usuarioActualId,
+    })
+    setSaving(false)
+    router.push('/')  // ← regresa al Kanban
+  }
   async function cambiarEstadoFolioDBA() {
     setSaving(true)
     await supabase.from('tickets').update({ estado: 'folio_dba' }).eq('id', ticket.id)
-    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'estado_cambio', descripcion: 'Estado: Folio DBA' })
+    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'estado_cambio', descripcion: 'Estado: Folio DBA', usuario_id:  usuarioActualId })
     setEstado('folio_dba')
     setSaving(false)
     router.refresh()
@@ -119,7 +170,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   async function cambiarEstadoEscritura() {
     setSaving(true)
     await supabase.from('tickets').update({ estado: 'escritura_dba' }).eq('id', ticket.id)
-    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'estado_cambio', descripcion: 'Estado: Escritura DBA' })
+    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'estado_cambio', descripcion: 'Estado: Escritura DBA', usuario_id:  usuarioActualId })
     setEstado('escritura_dba')
     setSaving(false)
     router.refresh()
@@ -128,7 +179,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   async function guardarReasignacion() {
     setSaving(true)
     await supabase.from('tickets').update({ tramite_id: nuevoTramiteId, area_id: nuevoAreaId, estado: 'asignado' }).eq('id', ticket.id)
-    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'reasignacion', descripcion: 'Ticket reasignado' })
+    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'reasignacion', descripcion: 'Ticket reasignado', usuario_id:  usuarioActualId })
     setSaving(false)
     setReasignando(false)
     router.refresh()
@@ -147,6 +198,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
 
   async function validarDocumento(docId: string) {
     await supabase.from('documentos').update({ estado: 'validado', validado_at: new Date().toISOString() }).eq('id', docId)
+    await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'validacion_documento', descripcion: 'Documento validado', usuario_id:  usuarioActualId })
     router.refresh()
   }
 
@@ -294,6 +346,8 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
           onDescargarExpediente={descargarExpediente}
           onCopiarLink={() => setModalLink(true)}
           onCopiarLinkParte={(url, rolLabel) => setModalLinkParte({ url, rolLabel })}
+          onCancelar={cancelarTicket}
+          onReactivar={reactivarTicket}
         />
       </div>
 
