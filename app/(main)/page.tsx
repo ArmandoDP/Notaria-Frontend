@@ -6,8 +6,14 @@ export default async function HomePage() {
 
   const { data: tickets } = await supabase
     .from('tickets')
-    .select('*, tramites_config(nombre, color_hex), areas(nombre, color_hex), partes(*)')
-    .order('created_at', { ascending: false })
+    .select(`
+      *,
+      tramites_config (nombre, color_hex),
+      areas (nombre, color_hex),
+      partes (*),
+      documentos (estado),
+      observaciones (estatus, id)
+    `).order('created_at', { ascending: false })
 
   const { data: areas } = await supabase
     .from('areas')
