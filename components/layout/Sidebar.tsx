@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import AIButton from '@/components/sections/notaria-ai/AIButton'
 import AICard from '../sections/notaria-ai/AICard'
 import ModalConfirm from '@/components/ui/ModalConfirm'
+import ModalSinAcceso from '../ui/ModalSinAcceso'
 
 const navItems = [
   { section: 'Operación' },
@@ -30,9 +31,10 @@ export default function Sidebar() {
 
   const [tramites,         setTramites]         = useState<any[]>([])
   const [tramitesExpanded, setTramitesExpanded] = useState(pathname.startsWith('/tramites'))
-  const [usuario, setUsuario] = useState<{ nombre: string, rol: string, letras: string } | null>(null)
+  const [usuario, setUsuario] = useState<{ nombre: string, rol: string, letras: string, area?: string } | null>(null)
   // Agrega estados:
   const [modalEliminar, setModalEliminar] = useState<{ id: string, nombre: string } | null>(null)
+  const [modalSinAcceso, setModalSinAcceso] = useState<string | null>(null)
 
   const [modalLogout, setModalLogout] = useState(false)
 
@@ -40,12 +42,18 @@ export default function Sidebar() {
     supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('nombre').then(({ data }) => {
       if (data) setTramites(data)
     })
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
-        const nombre = user.user_metadata?.nombre || user.email || ''
-        const rol    = user.user_metadata?.role   || 'agente'
-        const letras = nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-        setUsuario({ nombre, rol, letras })
+        // Leer rol desde usuarios_sistema — no desde user_metadata
+        const { data: us } = await supabase
+          .from('usuarios_sistema')
+          .select('nombre, rol, areas(nombre)')
+          .eq('email', user.email || '')
+          .single()
+        if (us) {
+          const letras = us.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+          setUsuario({ nombre: us.nombre, rol: us.rol, letras, area: (us.areas as any)?.nombre })
+        }
       }
     })
   }, [])
@@ -65,6 +73,17 @@ export default function Sidebar() {
     recepcion:        'Recepción',
     area_lead:        'Líder de área',
     agente:           'Agente',
+  }
+
+  const rolesConAccesoConfig = ['notario', 'asistente', 'notario_auxiliar', 'admin']
+  const puedeConfig = rolesConAccesoConfig.includes(usuario?.rol || '')
+
+  function verificarAcceso(accion: string, callback: () => void) {
+    if (puedeConfig) {
+      callback()
+    } else {
+      setModalSinAcceso(accion)
+    }
   }
 
   return (
@@ -159,15 +178,17 @@ export default function Sidebar() {
 
             {/* Botón nuevo trámite */}
             <span
-              onClick={async e => {
+              onClick={e => {
                 e.stopPropagation()
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/nuevo`, { method: 'POST' })
-                if (res.ok) {
-                  const nuevo = await res.json()
-                  setTramites(prev => [...prev, nuevo])
-                  setTramitesExpanded(true)
-                  window.location.href = `/tramites/${nuevo.id}`
-                }
+                verificarAcceso('crear nuevos trámites', async () => {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/nuevo`, { method: 'POST' })
+                  if (res.ok) {
+                    const nuevo = await res.json()
+                    setTramites(prev => [...prev, nuevo])
+                    setTramitesExpanded(true)
+                    window.location.href = `/tramites/${nuevo.id}`
+                  }
+                })
               }}
               className="text-[16px] px-1 rounded cursor-pointer transition-all"
               style={{ color: 'rgba(255,255,255,0.9)' }}
@@ -221,8 +242,12 @@ export default function Sidebar() {
           {configItems.map(item => {
             const active = pathname === item.href
             return (
-              <a key={item.href} href={item.href}
-                className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] no-underline mb-0.5 transition-all duration-200"
+              <button key={item.href}
+                onClick={() => verificarAcceso(
+                  item.href === '/usuarios' ? 'gestionar usuarios y permisos' : 'acceder a la configuración',
+                  () => router.push(item.href)
+                )}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] mb-0.5 transition-all duration-200 border-none cursor-pointer text-left"
                 style={{
                   background: active ? 'rgba(184,130,10,0.14)' : 'transparent',
                   color:      active ? '#F0C040' : 'rgba(255,255,255,0.65)',
@@ -233,7 +258,8 @@ export default function Sidebar() {
                   style={{ background: active ? '#F0C040' : 'rgba(255,255,255,0.2)', boxShadow: active ? '0 0 8px rgba(240,192,64,0.6)' : 'none' }} />
                 {item.label}
                 {active && <span className="ml-auto text-[10px] opacity-40">◆</span>}
-              </a>
+                {!puedeConfig && <span className="ml-auto text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>🔒</span>}
+              </button>
             )
           })}
 
@@ -332,6 +358,12 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
+      )}
+      {modalSinAcceso && (
+        <ModalSinAcceso
+          accion={modalSinAcceso}
+          onCerrar={() => setModalSinAcceso(null)}
+        />
       )}
     </div>
   )

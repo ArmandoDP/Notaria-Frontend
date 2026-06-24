@@ -60,19 +60,37 @@ const ROLES_ESPECIALES = [
   },
   {
     key:      'notario_auxiliar',
-    titulo:   'notario auxiliar ampliado',
-    subtitulo: 'Eda Hernández (acceso especial)',
-    avatar:   'ED',
+    titulo:   'Notario Auxiliar',
+    subtitulo: 'Acceso ampliado al sistema',
+    avatar:   'NA',
     bg:       '#FAE0E0',
     color:    '#D85A30',
     accesos: [
-      { icon: '👁', texto: 'Ve tickets de TODAS las áreas (mismos accesos que el notario)' },
+      { icon: '✅', texto: 'Ve tickets de todas las áreas' },
       { icon: '✅', texto: 'Puede crear tickets en cualquier área' },
       { icon: '✅', texto: 'Acceso completo al área Notario Auxiliar' },
-      { icon: '❌', texto: 'No modifica tickets de otras áreas', tachado: true },
+      { icon: '✅', texto: 'Crear y configurar trámites' },
+      { icon: '✅', texto: 'Crear y gestionar usuarios' },
     ],
-    nota: 'Eda necesita rol mixto: area_lead de su área + flag can_read_all = true en sus metadatos de Supabase.',
-    notaBg: '#FAE0E0', notaColor: '#993C1D',
+    nota: null,
+    notaBg: '', notaColor: '',
+  },
+  {
+    key:      'asistente',
+    titulo:   'Asistente',
+    subtitulo: 'Asistente de la Notaría',
+    avatar:   'AS',
+    bg:       '#EAF3DE',
+    color:    '#3B6D11',
+    accesos: [
+      { icon: '✅', texto: 'Crear y configurar trámites' },
+      { icon: '✅', texto: 'Crear y gestionar usuarios' },
+      { icon: '✅', texto: 'Acceso a configuración del sistema' },
+      { icon: '✅', texto: 'Ver y editar todos los tickets' },
+      { icon: '✅', texto: 'Cancelar y reactivar expedientes' },
+    ],
+    nota: 'El asistente actúa en nombre del notario para tareas administrativas del sistema.',
+    notaBg: '#EAF3DE', notaColor: '#3B6D11',
   },
 ]
 
@@ -131,13 +149,16 @@ export default function TabRolesEspeciales({ usuarios }: Props) {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {usersRol.map(u => (
-                      <div key={u.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                      <div key={u.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
                         style={{ background: '#F7F7F5' }}>
                         <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
                           style={{ background: u.avatar_color || rol.color }}>
                           {u.avatar_letras || u.nombre.slice(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-[11px]" style={{ color: '#333' }}>{u.nombre}</span>
+                        <div>
+                          <div className="text-[11px] font-semibold" style={{ color: '#333' }}>{u.nombre}</div>
+                          <div className="text-[10px]" style={{ color: '#9C9890' }}>{u.email}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
