@@ -23,7 +23,9 @@ export default function SeccionTramite({ tramites, areas, tramiteId, areaId, onT
             className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none cursor-pointer"
             style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
             <option value="">Seleccionar trámite...</option>
-            {tramites.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+            {[...tramites].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(t => (
+              <option key={t.id} value={t.id}>{t.nombre}</option>
+            ))}
           </select>
         </div>
         <div>

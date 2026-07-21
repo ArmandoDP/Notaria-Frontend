@@ -209,7 +209,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mb-4">
-            <GraficaActividad datos={actividadData} />
+            <GraficaActividad datos={actividadData} periodo={periodo} />
           </div>
 
           <div className="mb-4">

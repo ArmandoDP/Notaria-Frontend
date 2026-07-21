@@ -12,6 +12,7 @@ const COLUMNAS = [
   { id: 'folio_dba',     label: 'Folio DBA',      color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
   { id: 'escritura_dba', label: 'Escritura DBA',  color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
   { id: 'cancelado',     label: 'Cancelado',      color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
+  { id: 'completado',    label: 'Completado',     color: '#3B6D11', bg: 'rgba(59,109,17,0.1)' },
 ]
 
 const ESTATUS_PRIORIDAD: Record<string, { dot: string, prioridad: number }> = {
@@ -205,6 +206,7 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
 
 function TicketCard({ ticket }: { ticket: Ticket }) {
   const cancelado          = (ticket as any).estado === 'cancelado'
+  const completado         = (ticket as any).estado === 'completado'
   const vencido            = !cancelado && isPast(new Date(ticket.sla_vence_at))
   const tramite            = (ticket as any).tramites_config
   const area               = (ticket as any).areas
@@ -235,6 +237,17 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
         </div>
       )}
 
+      {/* Overlay verde para completados */}
+      {completado && (
+        <div className="absolute inset-0 z-10 rounded-xl flex flex-col items-center justify-center gap-1"
+          style={{ background: 'rgba(16,90,40,0.6)', backdropFilter: 'blur(1px)' }}>
+          <span className="text-[22px]">✅</span>
+          <span className="text-[9px] font-black tracking-widest uppercase"
+            style={{ color: 'rgba(255,255,255,0.7)' }}>
+            Completado
+          </span>
+        </div>
+      )}
       {/* Número + bolita estatus */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-[9px] font-bold tracking-wider" style={{ color: '#C0BAB2', fontFamily: 'monospace' }}>

@@ -18,7 +18,8 @@ export default async function HomePage() {
   const { data: areas } = await supabase
     .from('areas')
     .select('*')
-    .order('orden')
+    .eq('activa', true)
+    .order('nombre', { ascending: true })
 
   const { data: tramites } = await supabase
     .from('tramites_config')

@@ -41,6 +41,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   const [modalLink, setModalLink] = useState(false)
   const [modalLinkParte, setModalLinkParte] = useState<{ url: string, rolLabel: string } | null>(null)
   const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null)
+  const [nuevoCanal, setNuevoCanal] = useState(ticket.canal || 'front_desk')
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -178,7 +179,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
 
   async function guardarReasignacion() {
     setSaving(true)
-    await supabase.from('tickets').update({ tramite_id: nuevoTramiteId, area_id: nuevoAreaId, estado: 'asignado' }).eq('id', ticket.id)
+    await supabase.from('tickets').update({ tramite_id: nuevoTramiteId, area_id: nuevoAreaId, estado: 'asignado', canal: nuevoCanal }).eq('id', ticket.id)
     await supabase.from('ticket_eventos').insert({ ticket_id: ticket.id, tipo: 'reasignacion', descripcion: 'Ticket reasignado', usuario_id:  usuarioActualId })
     setSaving(false)
     setReasignando(false)
@@ -242,6 +243,42 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
     setModalLink(false)
   }
   
+  async function completarTicket(comentario: string) {
+    setSaving(true)
+    
+    // 1. Guardar observación de cierre
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: us } = await supabase
+        .from('usuarios_sistema')
+        .select('id')
+        .eq('email', user.email || '')
+        .single()
+      
+      if (us) {
+        await supabase.from('observaciones').insert({
+          ticket_id:  ticket.id,
+          usuario_id: us.id,
+          contenido:  comentario,
+          estatus:    'ok',
+        })
+      }
+    }
+
+    // 2. Cambiar estado a completado
+    await supabase.from('tickets').update({ estado: 'completado' }).eq('id', ticket.id)
+    await supabase.from('ticket_eventos').insert({
+      ticket_id:   ticket.id,
+      tipo:        'estado_cambio',
+      descripcion: 'Expediente marcado como completado',
+      usuario_id:  usuarioActualId,
+    })
+
+    setEstado('completado')
+    setSaving(false)
+    router.push('/')
+  }
+
   async function copiarLinkParte(url: string, rolLabel: string) {
     navigator.clipboard.writeText(url)
     
@@ -348,6 +385,9 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
           onCopiarLinkParte={(url, rolLabel) => setModalLinkParte({ url, rolLabel })}
           onCancelar={cancelarTicket}
           onReactivar={reactivarTicket}
+          onCompletar={completarTicket}
+          nuevoCanal={nuevoCanal}
+          onNuevoCanal={setNuevoCanal}
         />
       </div>
 

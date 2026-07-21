@@ -19,7 +19,8 @@ interface Props {
   folioEscrituraVinculado: boolean
   reasignando:             boolean
   nuevoTramiteId:          string
-  nuevoAreaId:             string
+  nuevoAreaId: string
+  nuevoCanal:   string
   onFolioDBAChange:        (val: string) => void
   onFolioEscrituraChange:  (val: string) => void
   onGuardarFolioDBA:       () => void
@@ -35,19 +36,21 @@ interface Props {
   onCopiarLink:             () => void
   onCancelar: () => void
   onReactivar: () => void
-  onCopiarLinkParte:        (url: string, rolLabel: string) => void
+  onCopiarLinkParte: (url: string, rolLabel: string) => void
+  onCompletar: (comentario: string) => void
+  onNuevoCanal: (val: string) => void
 }
 
 export default function TicketSidebar({
   ticket, estado, saving, tramites, areas, conversacionId,
   folioDBA, folioEscritura, folioDBAVinculado, folioEscrituraVinculado,
-  reasignando, nuevoTramiteId, nuevoAreaId,
+  reasignando, nuevoTramiteId, nuevoAreaId, nuevoCanal,
   onFolioDBAChange, onFolioEscrituraChange,
   onGuardarFolioDBA, onGuardarFolioEscritura,
   onCambiarEstadoFolioDBA, onCambiarEstadoEscritura,
-  onSetReasignando, onNuevoTramiteId, onNuevoAreaId,
+  onSetReasignando, onNuevoTramiteId, onNuevoAreaId, onNuevoCanal,
   onGuardarReasignacion, onEnviarRecordatorio,
-  onCopiarLink, onCopiarLinkParte, onCancelar, onReactivar,
+  onCopiarLink, onCopiarLinkParte, onCancelar, onReactivar, onCompletar,
 }: Props) {
 
   // ← Hook DENTRO del componente
@@ -60,6 +63,9 @@ export default function TicketSidebar({
   const [fase, setFase] = useState('')
   const [modalCancelar, setModalCancelar] = useState(false)
   const [reactivando, setReactivando] = useState(false)
+  const [modalCompletar, setModalCompletar] = useState(false)
+  const [comentarioCierre, setComentarioCierre] = useState('')
+  const [guardandoCierre, setGuardandoCierre] = useState(false)
 
   async function descargar() {
     setDescargando(true)
@@ -261,7 +267,7 @@ export default function TicketSidebar({
         style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#9C9890' }}>
-            Trámite y área
+            Trámite, área y canal
           </div>
           <button onClick={() => onSetReasignando(!reasignando)}
             className="text-[11px] cursor-pointer border-none bg-transparent font-medium"
@@ -271,16 +277,36 @@ export default function TicketSidebar({
         </div>
         {reasignando ? (
           <div className="flex flex-col gap-2">
-            <select value={nuevoTramiteId} onChange={e => onNuevoTramiteId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
-              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
-              {tramites.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-            </select>
-            <select value={nuevoAreaId} onChange={e => onNuevoAreaId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
-              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
-              {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </select>
+            <div>
+              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Trámite</div>
+              <select value={nuevoTramiteId} onChange={e => onNuevoTramiteId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
+                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
+                {[...tramites].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(t => (
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Canal</div>
+              <select value={nuevoCanal} onChange={e => onNuevoCanal(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
+                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
+                <option value="front_desk">Front desk</option>
+                <option value="telefono">Teléfono</option>
+                <option value="mail">Correo</option>
+                <option value="whatsapp_vip">WhatsApp VIP</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Área</div>
+              <select value={nuevoAreaId} onChange={e => onNuevoAreaId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
+                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
+                {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            </div>
             <button onClick={onGuardarReasignacion} disabled={saving}
               className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none"
               style={{ background: '#111', color: '#fff' }}>
@@ -288,12 +314,24 @@ export default function TicketSidebar({
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ background: tramite?.color_hex || '#666' }} />
-              <span className="text-[12.5px] font-medium" style={{ color: '#111' }}>{tramite?.nombre || '—'}</span>
+          <div className="flex flex-col gap-2.5">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Trámite</div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: tramite?.color_hex || '#666' }} />
+                <span className="text-[12px] font-semibold" style={{ color: '#111' }}>{tramite?.nombre || '—'}</span>
+              </div>
             </div>
-            <div className="text-[11px]" style={{ color: '#9C9890' }}>{area?.nombre || '—'}</div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Canal</div>
+              <span className="text-[12px] font-medium capitalize" style={{ color: '#111' }}>
+                {ticket.canal?.replace(/_/g, ' ') || '—'}
+              </span>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Área</div>
+              <span className="text-[12px] font-medium" style={{ color: '#111' }}>{area?.nombre || '—'}</span>
+            </div>
           </div>
         )}
       </div>
@@ -329,7 +367,7 @@ export default function TicketSidebar({
         <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>Información</div>
         <div className="flex flex-col gap-2.5 text-[12px]">
           {[
-            { label: 'Canal',  value: ticket.canal },
+            { label: 'Canal',  value: ticket.canal?.replace('_', ' ') || '—' },
             { label: 'Creado', value: format(new Date(ticket.created_at), "d MMM yyyy", { locale: es }) },
             { label: 'SLA',    value: format(new Date(ticket.sla_vence_at), "d MMM yyyy", { locale: es }) },
           ].map(r => (
@@ -379,6 +417,32 @@ export default function TicketSidebar({
           </div>
         </div>
       )}
+
+      {/* Completar ticket — solo si no está cancelado ni completado */}
+      {estado !== 'cancelado' && estado !== 'completado' && (
+        <div className="bg-white rounded-2xl p-4"
+          style={{ border: '1px solid rgba(59,109,17,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <button onClick={() => { setComentarioCierre(''); setModalCompletar(true) }}
+            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
+            style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+            ✅ Marcar como completado
+          </button>
+          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
+            Se requiere un comentario de cierre
+          </div>
+        </div>
+      )}
+
+      {/* Badge completado */}
+      {estado === 'completado' && (
+        <div className="bg-white rounded-2xl p-4 text-center"
+          style={{ border: '1px solid rgba(59,109,17,0.2)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div className="text-[24px] mb-1">✅</div>
+          <div className="text-[13px] font-bold" style={{ color: '#3B6D11' }}>Expediente completado</div>
+          <div className="text-[11px] mt-1" style={{ color: '#9C9890' }}>Este expediente fue cerrado exitosamente</div>
+        </div>
+      )}
+      
       {/* Modal compresión */}
       {descargando && (
         <div className="fixed inset-0 flex items-center justify-center z-50"
@@ -495,6 +559,66 @@ export default function TicketSidebar({
           </div>
         </div>
       )}
+
+      {modalCompletar && (
+      <div className="fixed inset-0 flex items-center justify-center z-50"
+        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+        <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
+          style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+
+          <div className="px-6 pt-6 pb-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
+              style={{ background: '#EAF3DE' }}>
+              ✅
+            </div>
+            <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
+              Completar expediente
+            </div>
+            <div className="text-[13px] mb-4" style={{ color: '#555' }}>
+              Agrega un comentario de cierre — quedará registrado en las observaciones del expediente.
+            </div>
+            <textarea
+              autoFocus
+              value={comentarioCierre}
+              onChange={e => setComentarioCierre(e.target.value)}
+              placeholder="Ej: Escritura firmada y entregada al cliente. Trámite concluido exitosamente..."
+              rows={4}
+              className="w-full px-3 py-3 rounded-xl text-[13px] outline-none resize-none leading-relaxed"
+              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
+            />
+            <div className="text-[11px] mt-1 text-right" style={{ color: '#9C9890' }}>
+              {comentarioCierre.length} caracteres
+            </div>
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+          <div className="flex gap-3 px-6 py-4">
+            <button onClick={() => { setModalCompletar(false); setComentarioCierre('') }}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+              style={{ background: '#F3F4F6', color: '#444' }}>
+              Cancelar
+            </button>
+            <button
+              onClick={async () => {
+                setGuardandoCierre(true)
+                await onCompletar(comentarioCierre)
+                setGuardandoCierre(false)
+                setModalCompletar(false)
+                setComentarioCierre('')
+              }}
+              disabled={!comentarioCierre.trim() || guardandoCierre}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
+              style={{
+                background: comentarioCierre.trim() && !guardandoCierre ? '#3B6D11' : '#F3F4F6',
+                color:      comentarioCierre.trim() && !guardandoCierre ? '#fff' : '#9CA3AF',
+              }}>
+              {guardandoCierre ? 'Guardando...' : '✅ Completar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
       <style jsx>{`
         @keyframes zipProgress { 0%{stroke-dashoffset:175} 50%{stroke-dashoffset:44} 100%{stroke-dashoffset:175} }
         @keyframes zipDot { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-6px);opacity:1} }
