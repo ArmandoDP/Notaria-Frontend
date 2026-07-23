@@ -42,14 +42,44 @@ export default function BuscadorFolios() {
     setBuscando(true)
     setBuscado(false)
 
+    let ticketIds: string[] = []
+
+    // Para 'todos' y 'nombre' — buscar en partes primero
+    if (tipo === 'todos' || tipo === 'nombre') {
+      const { data: partesMatch } = await supabase
+        .from('partes')
+        .select('ticket_id')
+        .ilike('nombre_completo', `%${query}%`)
+        .limit(50)
+      ticketIds = [...new Set((partesMatch || []).map((p: any) => p.ticket_id))]
+    }
+
+    if (tipo === 'nombre') {
+      // Solo por nombre
+      if (ticketIds.length === 0) {
+        setResultados([])
+        setBuscando(false)
+        setBuscado(true)
+        return
+      }
+      const { data } = await supabase
+        .from('tickets')
+        .select(`id, numero, folio_dba, folio_escritura, estado, created_at,
+          tramites_config (nombre, color_hex), areas (nombre), partes (nombre_completo, rol)`)
+        .in('id', ticketIds)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      setResultados((data as any) || [])
+      setBuscando(false)
+      setBuscado(true)
+      return
+    }
+
+    // Para los demás tipos
     let q = supabase
       .from('tickets')
-      .select(`
-        id, numero, folio_dba, folio_escritura, estado, created_at,
-        tramites_config (nombre, color_hex),
-        areas (nombre),
-        partes (nombre_completo, rol)
-      `)
+      .select(`id, numero, folio_dba, folio_escritura, estado, created_at,
+        tramites_config (nombre, color_hex), areas (nombre), partes (nombre_completo, rol)`)
       .limit(20)
 
     if (tipo === 'dba') {
@@ -58,22 +88,41 @@ export default function BuscadorFolios() {
       q = q.ilike('folio_escritura', `%${query}%`)
     } else if (tipo === 'numero') {
       q = q.ilike('numero', `%${query}%`)
-    } else if (tipo === 'nombre') {
-      const { data: partesMatch } = await supabase
-        .from('partes')
-        .select('ticket_id')
-        .ilike('nombre_completo', `%${query}%`)
-        .limit(20)
-      const ticketIds = [...new Set((partesMatch || []).map((p: any) => p.ticket_id))]
-      if (ticketIds.length === 0) {
-        setResultados([])
+    } else {
+      // TODOS — buscar en folios, número Y nombre de cliente
+      if (ticketIds.length > 0) {
+        // Combinar búsqueda por texto + IDs de partes
+        const { data: porTexto } = await supabase
+          .from('tickets')
+          .select(`id, numero, folio_dba, folio_escritura, estado, created_at,
+            tramites_config (nombre, color_hex), areas (nombre), partes (nombre_completo, rol)`)
+          .or(`folio_dba.ilike.%${query}%,folio_escritura.ilike.%${query}%,numero.ilike.%${query}%`)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        const { data: porNombre } = await supabase
+          .from('tickets')
+          .select(`id, numero, folio_dba, folio_escritura, estado, created_at,
+            tramites_config (nombre, color_hex), areas (nombre), partes (nombre_completo, rol)`)
+          .in('id', ticketIds)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        // Combinar y deduplicar
+        const todos = [...(porTexto || []), ...(porNombre || [])]
+        const vistos = new Set<string>()
+        const dedup  = todos.filter(t => {
+          if (vistos.has(t.id)) return false
+          vistos.add(t.id)
+          return true
+        })
+        setResultados(dedup as any)
         setBuscando(false)
         setBuscado(true)
         return
+      } else {
+        q = q.or(`folio_dba.ilike.%${query}%,folio_escritura.ilike.%${query}%,numero.ilike.%${query}%`)
       }
-      q = q.in('id', ticketIds)
-    } else {
-      q = q.or(`folio_dba.ilike.%${query}%,folio_escritura.ilike.%${query}%,numero.ilike.%${query}%`)
     }
 
     const { data } = await q.order('created_at', { ascending: false })
