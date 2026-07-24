@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -8,14 +8,16 @@ import { useRouter } from 'next/navigation'
 
 export default function Topbar() {
   const supabase = createClient()
-  const router   = useRouter()
+  const router = useRouter()
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const [nombre,        setNombre]        = useState('')
   const [rol,           setRol]           = useState('')
   const [initials,      setInitials]      = useState('')
   const [notifs,        setNotifs]        = useState<any[]>([])
   const [panelAbierto,  setPanelAbierto]  = useState(false)
-  const [usuarioId,     setUsuarioId]     = useState<string | null>(null)
+  const [usuarioId, setUsuarioId] = useState<string | null>(null)
+  const [popupNotif, setPopupNotif] = useState<any | null>(null)
 
   const rolLabel: Record<string, string> = {
     admin:            'Administrador',
@@ -27,11 +29,22 @@ export default function Topbar() {
   }
 
   const tipoConfig: Record<string, { icon: string, color: string }> = {
-    nuevo_ticket:    { icon: '📋', color: '#1B5FA5' },
-    cambio_estado:   { icon: '🔄', color: '#854F0B' },
-    documento_subido:{ icon: '📎', color: '#0F6E56' },
-    wa_nuevo:        { icon: '💬', color: '#25D366' },
+    nuevo_ticket:     { icon: '📋', color: '#1B5FA5' },
+    cambio_estado:    { icon: '🔄', color: '#854F0B' },
+    documento_subido: { icon: '📎', color: '#0F6E56' },
+    doc_validado:     { icon: '✅', color: '#3B6D11' },
+    doc_rechazado:    { icon: '⚠️', color: '#991B1B' },
+    parte_completa:   { icon: '📦', color: '#185FA5' },
+    wa_recibido:      { icon: '💬', color: '#25D366' },
+    wa_nuevo:         { icon: '💬', color: '#25D366' },
+    wa_enviado:       { icon: '📤', color: '#0F6E56' },
+    info:             { icon: '📌', color: '#534AB7' },
   }
+
+  useEffect(() => {
+    audioRef.current = new Audio('/notification_wa.wav')
+    audioRef.current.volume = 0.8
+  }, [])
 
   useEffect(() => {
     async function init() {
@@ -78,13 +91,21 @@ export default function Topbar() {
     const channel = supabase
       .channel(`notifs-${usuarioId}`)
       .on('postgres_changes', {
-        event:  'INSERT',
-        schema: 'public',
-        table:  'notificaciones',
-        filter: `usuario_id=eq.${usuarioId}`,
-      }, payload => {
-        setNotifs(prev => [payload.new, ...prev])
-      })
+          event:  'INSERT',
+          schema: 'public',
+          table:  'notificaciones',
+          filter: `usuario_id=eq.${usuarioId}`,
+        }, payload => {
+          const nueva = payload.new
+          setNotifs(prev => [nueva, ...prev])
+
+          // Sonido
+          audioRef.current?.play().catch(() => {})
+
+          // Popup
+          setPopupNotif(nueva)
+          setTimeout(() => setPopupNotif(null), 5000)
+        })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -186,9 +207,13 @@ export default function Topbar() {
                           background:  n.leida ? 'transparent' : '#F0F6FF',
                           borderColor: 'rgba(0,0,0,0.04)',
                         }}>
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[15px] flex-shrink-0"
-                          style={{ background: `${cfg.color}15` }}>
-                          {cfg.icon}
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: n.tipo?.startsWith('wa') ? '#25D366' : `${cfg.color}15` }}>
+                          {n.tipo?.startsWith('wa') ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                          ) : cfg.icon}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
@@ -237,6 +262,84 @@ export default function Topbar() {
           {initials}
         </div>
       </div>
+      {/* Popup de notificación */}
+      {popupNotif && (() => {
+        const esWA     = popupNotif.tipo === 'wa_recibido' || popupNotif.tipo === 'wa_nuevo'
+        const cfg      = tipoConfig[popupNotif.tipo] || { icon: '📌', color: '#666' }
+        return (
+          <div
+            className="fixed z-50 flex items-start gap-3"
+            style={{
+              top: 70, right: 16,
+              width: 360,
+              background: '#fff',
+              borderRadius: 16,
+              padding: '14px 16px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+              border: `1px solid ${esWA ? 'rgba(37,211,102,0.3)' : 'rgba(0,0,0,0.08)'}`,
+              animation: 'slideInRight 0.3s cubic-bezier(.34,1.2,.64,1)',
+            }}>
+
+            <style>{`
+              @keyframes slideInRight {
+                from { transform: translateX(120%); opacity: 0; }
+                to   { transform: translateX(0);    opacity: 1; }
+              }
+            `}</style>
+
+            {/* Icono WhatsApp oficial */}
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: esWA ? '#25D366' : `${cfg.color}15` }}>
+              {esWA ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+              ) : (
+                <span className="text-[18px]">{cfg.icon}</span>
+              )}
+            </div>
+
+            {/* Contenido */}
+            <div className="flex-1 min-w-0">
+              {esWA && (
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#25D366' }} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#25D366' }}>
+                    WhatsApp
+                  </span>
+                </div>
+              )}
+              <div className="text-[13px] font-bold mb-0.5 truncate" style={{ color: '#111' }}>
+                {popupNotif.titulo}
+              </div>
+              {popupNotif.descripcion && (
+                <div className="text-[12px] truncate" style={{ color: '#555' }}>
+                  {popupNotif.descripcion}
+                </div>
+              )}
+            </div>
+
+            {/* Cerrar */}
+            <button onClick={() => setPopupNotif(null)}
+              className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer border-none flex-shrink-0 text-[11px]"
+              style={{ background: '#F3F4F6', color: '#666' }}>
+              ✕
+            </button>
+
+            {/* Barra de progreso */}
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-2xl overflow-hidden">
+              <div style={{
+                height: '100%',
+                background: esWA ? '#25D366' : cfg.color,
+                animation: 'progress 5s linear forwards',
+              }} />
+            </div>
+            <style>{`
+              @keyframes progress { from { width: 100% } to { width: 0% } }
+            `}</style>
+          </div>
+        )
+      })()}
     </header>
   )
 }
