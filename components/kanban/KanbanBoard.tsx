@@ -212,7 +212,7 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
   const area               = (ticket as any).areas
   const partes             = ((ticket as any).partes as any[]) || []
   const observaciones      = ((ticket as any).observaciones as any[]) || []
-  const primero            = partes[0]?.nombre_completo
+  const primero            = partes.find((p: any) => p.nombre_completo)?.nombre_completo
   const slaLabel           = formatDistanceToNow(new Date(ticket.sla_vence_at), { locale: es, addSuffix: true })
   const estatusPrioritario = getEstatusPrioritario(observaciones)
 
