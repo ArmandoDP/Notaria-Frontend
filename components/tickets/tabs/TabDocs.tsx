@@ -95,16 +95,19 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             {doc.datos_ocr?.estado_ia && (
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                 style={{
-                  background: doc.datos_ocr.estado_ia === 'validado'  ? '#D1FAE5' :
-                              doc.datos_ocr.estado_ia === 'rechazado' ? '#FEE2E2' :
-                              doc.datos_ocr.estado_ia === 'revisar'   ? '#FEF3C7' : '#F3F4F6',
-                  color:      doc.datos_ocr.estado_ia === 'validado'  ? '#065F46' :
-                              doc.datos_ocr.estado_ia === 'rechazado' ? '#991B1B' :
-                              doc.datos_ocr.estado_ia === 'revisar'   ? '#92400E' : '#6B7280',
+                  background: doc.datos_ocr.estado_ia === 'validado'           ? '#D1FAE5' :
+                              doc.datos_ocr.estado_ia === 'rechazado'          ? '#FEE2E2' :
+                              doc.datos_ocr.estado_ia === 'revision_requerida' ? '#FEF3C7' :
+                              doc.datos_ocr.estado_ia === 'revisar'            ? '#FEF3C7' : '#F3F4F6',
+                  color:      doc.datos_ocr.estado_ia === 'validado'           ? '#065F46' :
+                              doc.datos_ocr.estado_ia === 'rechazado'          ? '#991B1B' :
+                              doc.datos_ocr.estado_ia === 'revision_requerida' ? '#92400E' :
+                              doc.datos_ocr.estado_ia === 'revisar'            ? '#92400E' : '#6B7280',
                 }}>
-                {doc.datos_ocr.estado_ia === 'validado'  ? '✓ ' :
-                 doc.datos_ocr.estado_ia === 'rechazado' ? '✗ ' :
-                 doc.datos_ocr.estado_ia === 'revisar'   ? '⚠ ' : '· '}
+                {doc.datos_ocr.estado_ia === 'validado'           ? '✓ ' :
+                doc.datos_ocr.estado_ia === 'rechazado'          ? '✗ ' :
+                doc.datos_ocr.estado_ia === 'revision_requerida' ? '⚠ ' :
+                doc.datos_ocr.estado_ia === 'revisar'            ? '⚠ ' : '· '}
                 {doc.datos_ocr.mensaje_ia}
               </span>
             )}
@@ -114,14 +117,25 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
               {doc.doc_tipos_config.alerta_descripcion}
             </div>
           )}
-          {doc.datos_ocr?.campos && Object.keys(doc.datos_ocr.campos).length > 0 && (
-            <div className="text-[10px] mt-2 ml-3 leading-relaxed" style={{ color: '#9C9890' }}>
-              {doc.datos_ocr.campos.texto_completo
-                ? doc.datos_ocr.campos.texto_completo.slice(0, 120) + '...'
-                : Object.entries(doc.datos_ocr.campos).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · ')
-              }
-            </div>
-          )}
+        {doc.datos_ocr?.campos && Object.keys(doc.datos_ocr.campos).length > 0 && (
+          <div className="text-[10px] mt-2 ml-3 leading-relaxed flex flex-wrap gap-x-2 gap-y-0.5">
+            {doc.datos_ocr.campos.texto_completo ? (
+              <span style={{ color: '#9C9890' }}>
+                {(doc.datos_ocr.campos.texto_completo as any).valor?.slice(0, 120)}...
+              </span>
+            ) : (
+              Object.entries(doc.datos_ocr.campos)
+                .filter(([k]) => k !== 'texto_completo')
+                .slice(0, 3)
+                .map(([k, v]) => (
+                  <span key={k}>
+                    <span style={{ color: '#C0BAB2' }}>{k.split('.')[1] || k}: </span>
+                    <span className="font-semibold" style={{ color: '#555' }}>{(v as any).valor || '—'}</span>
+                  </span>
+                ))
+            )}
+          </div>
+        )}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -202,7 +216,7 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
     )
   }
 
-  const renderGrupo = (titulo: string, docs: any[], avatar: string, color: string, extra?: string, sinDocs?: boolean) => (
+  const renderGrupo = (titulo: string, docs: any[], avatar: string, color: string, extra?: string, sinDocs?: boolean, parteId?: string) => (
     <div key={titulo}>
       <div className="flex items-center gap-2 mb-2">
         <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
@@ -211,7 +225,17 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
         </div>
         <span className="text-[12px] font-bold capitalize" style={{ color: '#333' }}>{titulo}</span>
         {extra && <span className="text-[10px]" style={{ color: '#9C9890' }}>{extra}</span>}
+        {parteId && (
+          <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${ticket.id}?parte_id=${parteId}&formato=docx`}
+            target="_blank" rel="noopener noreferrer"
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold no-underline ml-auto flex-shrink-0"
+            style={{ background: '#F3F0FF', color: '#6C5CE7' }}
+            title="Descargar OCR de esta parte">
+            🤖 OCR parte
+          </a>
+        )}
       </div>
+      
       <div className="flex flex-col gap-2 ml-2">
         {sinDocs ? (
           <div className="flex items-start gap-2.5 p-3 rounded-xl"
@@ -249,7 +273,8 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
             docs.length > 0
               ? `${docs.filter((d: any) => d.estado === 'validado').length}/${docs.length} validados`
               : undefined,
-            docs.length === 0  // ← sinDocs flag
+            docs.length === 0,
+            parte.id  // ← agregar aquí
           )
         )}
         {docsSinClasificar.length > 0 && renderGrupo('Sin clasificar', docsSinClasificar, '?', '#6B7280')}
@@ -326,6 +351,18 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                   style={{ background: '#EAF3DE', color: '#3B6D11' }}>
                   ⬇ Descargar
                 </a>
+
+                {/* Descargar OCR estructurado */}
+                {docModal.datos_ocr?.campos && Object.keys(docModal.datos_ocr.campos).length > 0 && (
+                  <a
+                    href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${docModal.ticket_id}?parte_id=${docModal.parte_id || ''}&doc_id=${docModal.id}&formato=docx`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl text-[12px] font-semibold no-underline"
+                    style={{ background: '#F3F0FF', color: '#6C5CE7' }}
+                    title="Descargar transcripción OCR de este documento">
+                    🤖 OCR
+                  </a>
+                )}
                 {/* Abrir en nueva pestaña */}
                 <a href={docModal.archivo_url} target="_blank" rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-xl text-[12px] font-semibold no-underline"
@@ -380,7 +417,10 @@ export default function TabDocs({ documentos, tramite, ticket, onSubir, onValida
                     .map(([k, v]) => (
                       <div key={k} className="flex gap-1.5">
                         <span style={{ color: '#9C9890' }}>{k}:</span>
-                        <span className="font-medium truncate" style={{ color: '#333' }}>{String(v)}</span>
+                        <span className="font-medium truncate" 
+                          style={{ color: (v as any).confianza < 0.8 ? '#F59E0B' : '#333' }}>
+                          {(v as any).valor || '—'}
+                        </span>
                       </div>
                     ))
                   }

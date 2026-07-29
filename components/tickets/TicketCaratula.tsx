@@ -13,6 +13,7 @@ import TabHistorial   from './tabs/TabHistorial'
 // import TabPreguntas   from './TabPreguntas'
 import TicketTabs from './TicketTabs'
 import ModalCopiarLink from '@/components/ui/ModalCopiarLink'
+import ModalValidandoDoc from './ModalValidandoDoc'
 
 export default function TicketCaratula({ ticket, tramites, areas, conversacionId }: {
   ticket:          any
@@ -42,6 +43,7 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   const [modalLinkParte, setModalLinkParte] = useState<{ url: string, rolLabel: string } | null>(null)
   const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null)
   const [nuevoCanal, setNuevoCanal] = useState(ticket.canal || 'front_desk')
+  const [validandoDoc, setValidandoDoc] = useState<{ docId: string, nombreDoc: string } | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -186,15 +188,23 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
     router.refresh()
   }
 
+  // En subirDocumento — muestra el modal después de subir
   async function subirDocumento(docId: string, docTipoId: string, parteId: string | null, archivo: File) {
     const formData = new FormData()
     formData.append('ticket_id',   ticket.id)
     formData.append('doc_tipo_id', docTipoId)
     formData.append('archivo',     archivo)
     if (parteId) formData.append('parte_id', parteId)
+
+    // Obtener nombre del doc para el modal
+    const doc = ticket.documentos?.find((d: any) => d.id === docId)
+    const nombreDoc = doc?.doc_tipos_config?.nombre || 'Documento'
+
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/docs/upload`, { method: 'POST', body: formData })
     if (!res.ok) { alert('Error al subir el documento'); return }
-    router.refresh()
+
+    // Mostrar modal de validación
+    setValidandoDoc({ docId, nombreDoc })
   }
 
   async function validarDocumento(docId: string) {
@@ -398,7 +408,18 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
         onConfirmar={copiarLink}
         onCancelar={() => setModalLink(false)}
       />
-    )}
+      )}
+      
+      {validandoDoc && (
+        <ModalValidandoDoc
+          docId={validandoDoc.docId}
+          nombreDoc={validandoDoc.nombreDoc}
+          onClose={() => {
+            setValidandoDoc(null)
+            router.refresh()
+          }}
+        />
+      )}
 
     {modalLinkParte && (
       <ModalCopiarLink

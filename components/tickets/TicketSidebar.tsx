@@ -350,6 +350,28 @@ export default function TicketSidebar({
         </div>
       </div>
 
+      {/* Descargar solicitud */}
+      <div className="bg-white rounded-2xl p-4"
+        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
+          Descargar solicitud
+        </div>
+        <div className="flex flex-col gap-2">
+          <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${ticket.id}?formato=docx`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline transition-all"
+            style={{ background: '#E6F1FB', color: '#185FA5' }}>
+            📄 Descargar Word (.docx)
+          </a>
+          <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${ticket.id}?formato=pdf`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline transition-all"
+            style={{ background: '#FEE2E2', color: '#991B1B' }}>
+            📕 Descargar PDF
+          </a>
+        </div>
+      </div>
+
       {/* WhatsApp — solo si puede editar */}
       <div className="bg-white rounded-2xl p-4"
         style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
