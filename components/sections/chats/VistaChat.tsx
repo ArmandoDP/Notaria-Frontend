@@ -215,7 +215,7 @@ export default function VistaChat({ conversacion, onMensajeEnviado, onCambiarEst
       )}
 
       {/* Mensajes */}
-      <div className="flex-1 overflow-y-auto py-4" style={{ paddingLeft: '10%', paddingRight: '10%', paddingTop: infoOpen ? '200px' : '160px' }}>
+      <div className="flex-1 overflow-y-auto py-4" style={{ paddingLeft: '10%', paddingRight: '10%', paddingTop: '160px', paddingBottom: '80px' }}>
         {mensajes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-[32px]"

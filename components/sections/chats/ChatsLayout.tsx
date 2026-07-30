@@ -34,7 +34,9 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
   const [iniciando,     setIniciando]     = useState(false)
   
   const [convExistente, setConvExistente] = useState<any | null>(null)
-  const [verificando,   setVerificando]   = useState(false)
+  const [verificando, setVerificando] = useState(false)
+  const [esAdmin, setEsAdmin] = useState(false)
+  const [directorioAbierto, setDirectorioAbierto] = useState(false)
 
   useEffect(() => {
     if (convParam && conversacionesIniciales.length > 0) {
@@ -68,6 +70,22 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
     return () => { supabase.removeChannel(channel) }
   }, [convSeleccionada])
 
+
+  useEffect(() => {
+    const cached = sessionStorage.getItem('usuario_sistema')
+    if (cached) {
+      const u = JSON.parse(cached)
+      setEsAdmin(['admin', 'notario', 'asistente'].includes(u.rol))
+      return
+    }
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase.from('usuarios_sistema').select('rol').eq('email', user.email || '').single()
+      if (data) setEsAdmin(['admin', 'notario', 'asistente'].includes(data.rol))
+    })
+  }, [])
+
+  
   async function cambiarEstatus(convId: string, estatus: string) {
     await supabase.from('conversaciones_wa').update({ estatus }).eq('id', convId)
     setConversaciones(prev => prev.map(c => c.id === convId ? { ...c, estatus } : c))
@@ -206,22 +224,33 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
           </div>
         </div>
 
-        {/* Filtro por área */}
-        <div className="px-3 py-2 flex gap-1.5 overflow-x-auto flex-shrink-0"
-          style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-          <button onClick={() => setFiltroArea('todas')}
-            className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
-            style={{ background: filtroArea === 'todas' ? '#111' : '#F3F4F6', color: filtroArea === 'todas' ? '#fff' : '#666' }}>
-            Todas
+        <div className="flex-shrink-0 p-3"
+          style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
+          <button onClick={() => setDirectorioAbierto(!directorioAbierto)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[13px] font-bold cursor-pointer border-none transition-all"
+            style={{ background: directorioAbierto ? '#111' : '#F3F4F6', color: directorioAbierto ? '#fff' : '#666' }}>
+            📋 Directorio Notaria
           </button>
-          {areas.map(a => (
-            <button key={a.id} onClick={() => setFiltroArea(a.id)}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
-              style={{ background: filtroArea === a.id ? a.color_hex : '#F3F4F6', color: filtroArea === a.id ? '#fff' : '#666' }}>
-              {a.nombre}
-            </button>
-          ))}
         </div>
+
+        {/* Filtro por área — solo admins */}
+        {esAdmin && (
+          <div className="px-3 py-2 flex gap-1.5 overflow-x-auto flex-shrink-0"
+            style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+            <button onClick={() => setFiltroArea('todas')}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
+              style={{ background: filtroArea === 'todas' ? '#111' : '#F3F4F6', color: filtroArea === 'todas' ? '#fff' : '#666' }}>
+              Todas
+            </button>
+            {areas.map(a => (
+              <button key={a.id} onClick={() => setFiltroArea(a.id)}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
+                style={{ background: filtroArea === a.id ? a.color_hex : '#F3F4F6', color: filtroArea === a.id ? '#fff' : '#666' }}>
+                {a.nombre}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Count filtrado */}
         <div className="px-4 py-1.5 flex-shrink-0"
@@ -264,39 +293,104 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
         </div>
       </div>
 
-      {/* Panel derecho */}
-      <div className="flex-1 flex flex-col" style={{ background: '#F7F7F5', minWidth: 0 }}>
-        {convSeleccionada ? (
-          <VistaChat
-            conversacion={convSeleccionada}
-            onMensajeEnviado={() => {}}
-            onCambiarEstatus={(estatus) => cambiarEstatus(convSeleccionada.id, estatus)}
-          />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <div style={{ fontSize: 56 }}>💬</div>
-            <div>
-              <div className="text-[16px] font-bold text-center mb-1" style={{ color: '#333' }}>
-                Selecciona una conversación
+      {/* Panel derecho — Chat + Directorio */}
+      <div className="flex-1 flex" style={{ minWidth: 0 }}>
+
+        {/* Vista del chat */}
+        <div className="flex-1 flex flex-col" style={{ background: '#F7F7F5', minWidth: 0 }}>
+          {convSeleccionada ? (
+            <VistaChat
+              conversacion={convSeleccionada}
+              onMensajeEnviado={() => {}}
+              onCambiarEstatus={(estatus) => cambiarEstatus(convSeleccionada.id, estatus)}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div style={{ fontSize: 56 }}>💬</div>
+              <div>
+                <div className="text-[16px] font-bold text-center mb-1" style={{ color: '#333' }}>
+                  Selecciona una conversación
+                </div>
+                <div className="text-[13px] text-center" style={{ color: '#9C9890' }}>
+                  Los mensajes de WhatsApp aparecen aquí en tiempo real
+                </div>
               </div>
-              <div className="text-[13px] text-center" style={{ color: '#9C9890' }}>
-                Los mensajes de WhatsApp aparecen aquí en tiempo real
+              <div className="flex gap-3 mt-2">
+                {[
+                  { emoji: '🟡', label: `${countPendiente} pendientes` },
+                  { emoji: '🔴', label: `${countDemorado} demorados`  },
+                ].filter(s => parseInt(s.label) > 0).map(s => (
+                  <div key={s.label} className="px-3 py-1.5 rounded-xl text-[12px]"
+                    style={{ background: '#F3F4F6', color: '#666' }}>
+                    {s.emoji} {s.label}
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="flex gap-3 mt-2">
-              {[
-                { emoji: '🟡', label: `${countPendiente} pendientes` },
-                { emoji: '🔴', label: `${countDemorado} demorados`  },
-              ].filter(s => parseInt(s.label) > 0).map(s => (
-                <div key={s.label} className="px-3 py-1.5 rounded-xl text-[12px]"
-                  style={{ background: '#F3F4F6', color: '#666' }}>
-                  {s.emoji} {s.label}
+          )}
+        </div>
+
+        {/* Panel directorio */}
+        {directorioAbierto && (
+          <div className="flex-shrink-0 flex flex-col overflow-hidden"
+            style={{ width: 260, borderLeft: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
+
+            <div className="px-4 py-3 flex items-center justify-between flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+              <div className="text-[13px] font-bold pt-6" style={{ color: '#111' }}>Directorio WhatsApp</div>
+              <button onClick={() => setDirectorioAbierto(false)}
+                className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer border-none text-[11px] pt-6"
+                style={{ background: '#F3F4F6', color: '#666' }}>✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-2">
+              {areas.filter((a: any) => a.numero_twilio).map((a: any) => (
+                <div key={a.id} className="flex items-center justify-between px-4 py-2.5"
+                  style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: a.color_hex }} />
+                      <span className="text-[12px] font-semibold" style={{ color: '#111' }}>{a.nombre}</span>
+                    </div>
+                    <span className="text-[11px] font-mono" style={{ color: '#9C9890' }}>
+                      {a.numero_twilio}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(a.numero_twilio)
+                      const btn = document.getElementById(`copy-${a.id}`)
+                      if (btn) {
+                        btn.textContent = '✓ Copiado'
+                        btn.style.background = '#EAF3DE'
+                        btn.style.color = '#3B6D11'
+                        setTimeout(() => {
+                          btn.textContent = '📋 Copiar'
+                          btn.style.background = '#F3F4F6'
+                          btn.style.color = '#666'
+                        }, 1500)
+                      }
+                    }}
+                    id={`copy-${a.id}`}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
+                    style={{ background: '#F3F4F6', color: '#666' }}>
+                    📋 Copiar
+                  </button>
                 </div>
               ))}
             </div>
+
+            <div className="px-4 py-3 flex-shrink-0"
+              style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#FAFAF8' }}>
+              <div className="text-[10px] text-center" style={{ color: '#9C9890' }}>
+                Clic en 📋 para copiar el número
+              </div>
+            </div>
           </div>
         )}
+
       </div>
+
       {modalNueva && (
         <div className="fixed inset-0 flex items-center justify-center z-50"
           style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>

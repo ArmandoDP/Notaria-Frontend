@@ -40,7 +40,7 @@ export default async function ChatsPage() {
   // Areas — solo las que tienen número de WhatsApp
   const { data: areas } = await supabase
     .from('areas')
-    .select('id, nombre, color_hex')
+    .select('id, nombre, color_hex, numero_twilio')
     .eq('activa', true)
     .not('numero_twilio', 'is', null)
     .order('nombre')
