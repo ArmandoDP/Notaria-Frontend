@@ -37,6 +37,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
   const [verificando, setVerificando] = useState(false)
   const [esAdmin, setEsAdmin] = useState(false)
   const [directorioAbierto, setDirectorioAbierto] = useState(false)
+  const [usuarioAreaId, setUsuarioAreaId] = useState<string | null>(null)
 
   useEffect(() => {
     if (convParam && conversacionesIniciales.length > 0) {
@@ -75,6 +76,18 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
 
 
   useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('usuarios_sistema')
+        .select('area_id')
+        .eq('email', user.email || '')
+        .single()
+      if (data) setUsuarioAreaId(data.area_id)
+    })
+  }, [])
+
+  useEffect(() => {
     const cached = sessionStorage.getItem('usuario_sistema')
     if (cached) {
       const u = JSON.parse(cached)
@@ -107,7 +120,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
         body: JSON.stringify({
           telefono: nuevoTelefono.trim(),
           nombre:   nuevoNombre.trim() || nuevoTelefono.trim(),
-          area_id:  filtroArea !== 'todas' ? filtroArea : null,  // ← agregar
+          area_id:  usuarioAreaId,  // ← área del usuario logueado
         }),
       })
       if (!res.ok) throw new Error('Error al iniciar')
