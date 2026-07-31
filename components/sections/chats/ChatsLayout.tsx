@@ -55,7 +55,10 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
               .from('conversaciones_wa')
               .select('*, areas(nombre, color_hex)')
               .eq('id', payload.new.id).single()
-            if (data) setConversaciones(prev => [data, ...prev])
+            if (data) setConversaciones(prev => {
+              if (prev.find(c => c.id === data.id)) return prev  // ← ya existe, no duplicar
+              return [data, ...prev]
+            })
           }
           if (payload.eventType === 'UPDATE') {
             setConversaciones(prev => prev.map(c =>
