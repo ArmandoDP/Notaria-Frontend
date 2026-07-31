@@ -107,6 +107,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
         body: JSON.stringify({
           telefono: nuevoTelefono.trim(),
           nombre:   nuevoNombre.trim() || nuevoTelefono.trim(),
+          area_id:  filtroArea !== 'todas' ? filtroArea : null,  // ← agregar
         }),
       })
       if (!res.ok) throw new Error('Error al iniciar')
