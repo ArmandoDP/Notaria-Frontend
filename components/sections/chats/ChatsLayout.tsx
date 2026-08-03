@@ -119,6 +119,20 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
   async function iniciarConversacion() {
     if (!nuevoTelefono.trim()) return
     setIniciando(true)
+
+    // Obtener area_id del usuario si no está cargado
+    let areaIdFinal = usuarioAreaId
+    if (!areaIdFinal) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase
+          .from('usuarios_sistema')
+          .select('area_id')
+          .eq('email', user.email || '')
+          .single()
+        if (data) areaIdFinal = data.area_id
+      }
+    }
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/twilio/nueva-conversacion`, {
         method:  'POST',
