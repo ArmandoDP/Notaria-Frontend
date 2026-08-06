@@ -6,6 +6,8 @@ import UploadHeader    from './UploadHeader'
 import UploadStepDatos from './UploadStepDatos'
 import UploadStepDocs  from './UploadStepDocs'
 import UploadCompleto  from './UploadCompleto'
+import ModalValidandoDoc from '@/components/tickets/ModalValidandoDoc'
+import { useRouter } from 'next/navigation'
 
 interface Props {
   parte:      any
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export default function UploadParte({ parte, ticket, documentos: docsIniciales, token }: Props) {
+  const router    = useRouter()
   const supabase  = createClient()
   const tramite   = ticket.tramites_config
   const color     = tramite?.color_hex || '#111'
@@ -29,7 +32,8 @@ export default function UploadParte({ parte, ticket, documentos: docsIniciales, 
   const [documentos, setDocumentos] = useState(docsIniciales || [])
   const [subiendo,   setSubiendo]   = useState<string | null>(null)
   const [subidos,    setSubidos]    = useState<Record<string, boolean>>({})
-  const [errores,    setErrores]    = useState<Record<string, string>>({})
+  const [errores, setErrores] = useState<Record<string, string>>({})
+  const [validandoDoc, setValidandoDoc] = useState<{ docId: string, nombreDoc: string } | null>(null)
   const [paso, setPaso] = useState<'datos' | 'docs'>('datos')
 
   // Realtime
@@ -54,7 +58,7 @@ export default function UploadParte({ parte, ticket, documentos: docsIniciales, 
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function subirArchivo(docId: string, docTipoId: string, archivo: File) {
+  async function subirArchivo(docId: string, docTipoId: string, archivo: File, nombreDoc: string = 'Documento') {
     setSubiendo(docId)
     setErrores(prev => ({ ...prev, [docId]: '' }))
     try {
@@ -71,13 +75,14 @@ export default function UploadParte({ parte, ticket, documentos: docsIniciales, 
       })
       if (!res.ok) throw new Error('Error al subir')
       setSubidos(prev => ({ ...prev, [docId]: true }))
+      // Mostrar modal de validación
+      setValidandoDoc({ docId, nombreDoc })
     } catch {
       setErrores(prev => ({ ...prev, [docId]: 'Error al subir. Intenta de nuevo.' }))
     } finally {
       setSubiendo(null)
     }
   }
-
   // Stepper simple — datos → docs
   const stepperPasos = [
     { label: parte.rol.replace(/_/g, ' '), sublabel: 'Tus datos',    tipo: 'datos' as const },
@@ -119,9 +124,19 @@ export default function UploadParte({ parte, ticket, documentos: docsIniciales, 
           subiendo={subiendo}
           subidos={subidos}
           errores={errores}
-          onSubir={subirArchivo}
+          onSubir={(docId, docTipoId, archivo, nombreDoc) => subirArchivo(docId, docTipoId, archivo, nombreDoc)}
           onContinuar={() => setPaso('datos')}  // ← regresa a datos en lugar de ir a completo
           esUltimoPaso={true}
+        />
+      )}
+      {validandoDoc && (
+        <ModalValidandoDoc
+          docId={validandoDoc.docId}
+          nombreDoc={validandoDoc.nombreDoc}
+          onClose={() => {
+            setValidandoDoc(null)
+            router.refresh()
+          }}
         />
       )}
     </div>

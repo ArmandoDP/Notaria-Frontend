@@ -6,7 +6,9 @@ import UploadHeader    from './UploadHeader'
 import UploadStepper   from './UploadStepper'
 import UploadStepDatos from './UploadStepDatos'
 import UploadStepDocs  from './UploadStepDocs'
-import UploadCompleto  from './UploadCompleto'
+import UploadCompleto from './UploadCompleto'
+import ModalValidandoDoc from '@/components/tickets/ModalValidandoDoc'
+import { useRouter } from 'next/navigation'
 
 interface Props {
   ticket:         any
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export default function UploadPublico({ ticket, token, soloOperacion = false }: Props) {
+  const router = useRouter()
   const supabase    = createClient()
   const tramite     = ticket.tramites_config
   const color       = tramite?.color_hex || '#111'
@@ -24,7 +27,8 @@ export default function UploadPublico({ ticket, token, soloOperacion = false }: 
   const [documentos, setDocumentos] = useState(ticket.documentos || [])
   const [subiendo,   setSubiendo]   = useState<string | null>(null)
   const [subidos,    setSubidos]    = useState<Record<string, boolean>>({})
-  const [errores,    setErrores]    = useState<Record<string, string>>({})
+  const [errores, setErrores] = useState<Record<string, string>>({})
+  const [validandoDoc, setValidandoDoc] = useState<{ docId: string, nombreDoc: string } | null>(null)
   const [pasoActual, setPasoActual] = useState(0)
   const [completo,   setCompleto]   = useState(false)
 
@@ -93,7 +97,7 @@ export default function UploadPublico({ ticket, token, soloOperacion = false }: 
     avanzarPaso()
   }
 
-  async function subirArchivo(docId: string, docTipoId: string, archivo: File) {
+  async function subirArchivo(docId: string, docTipoId: string, archivo: File, nombreDoc: string = 'Documento') {
     setSubiendo(docId)
     setErrores(prev => ({ ...prev, [docId]: '' }))
     try {
@@ -107,6 +111,8 @@ export default function UploadPublico({ ticket, token, soloOperacion = false }: 
       })
       if (!res.ok) throw new Error('Error al subir')
       setSubidos(prev => ({ ...prev, [docId]: true }))
+      // Mostrar modal de validación
+      setValidandoDoc({ docId, nombreDoc })
     } catch {
       setErrores(prev => ({ ...prev, [docId]: 'Error al subir. Intenta de nuevo.' }))
     } finally {
@@ -169,6 +175,16 @@ export default function UploadPublico({ ticket, token, soloOperacion = false }: 
           onSubir={subirArchivo}
           onContinuar={avanzarPaso}
           esUltimoPaso={pasoActual >= pasos.length - 1}
+        />
+      )}
+      {validandoDoc && (
+        <ModalValidandoDoc
+          docId={validandoDoc.docId}
+          nombreDoc={validandoDoc.nombreDoc}
+          onClose={() => {
+            setValidandoDoc(null)
+            router.refresh()
+          }}
         />
       )}
     </div>

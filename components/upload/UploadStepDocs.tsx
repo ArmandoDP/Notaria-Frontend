@@ -7,7 +7,7 @@ interface Props {
   subiendo:     string | null
   subidos:      Record<string, boolean>
   errores:      Record<string, string>
-  onSubir:      (docId: string, docTipoId: string, archivo: File) => void
+  onSubir: (docId: string, docTipoId: string, archivo: File, nombreDoc: string) => void
   onContinuar:  () => void
   esUltimoPaso: boolean
 }
@@ -115,7 +115,7 @@ export default function UploadStepDocs({
               }}>
                 🔄 Subir de nuevo
                 <input type="file" style={{ display: 'none' }} accept=".jpg,.jpeg,.png,.webp,.pdf"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) onSubir(doc.id, doc.doc_tipo_id, f) }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) onSubir(doc.id, doc.doc_tipo_id, f, doc.doc_tipos_config?.nombre || 'Documento') }} />
               </label>
             ) : !yaSubido ? (
               <div style={{ marginTop: '8px' }}>
@@ -129,7 +129,7 @@ export default function UploadStepDocs({
                 }}>
                   {cargando ? '⏳ Subiendo...' : '📎 Seleccionar archivo'}
                   <input type="file" style={{ display: 'none' }} accept=".jpg,.jpeg,.png,.webp,.pdf" disabled={cargando}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) onSubir(doc.id, doc.doc_tipo_id, f) }} />
+                    onChange={e => { const f = e.target.files?.[0]; if (f) onSubir(doc.id, doc.doc_tipo_id, f, doc.doc_tipos_config?.nombre || 'Documento') }} />
                 </label>
                 {error && <div style={{ fontSize: '11px', color: '#E24B4A', marginTop: '6px' }}>{error}</div>}
               </div>
