@@ -18,6 +18,7 @@ export default function Topbar() {
   const [panelAbierto,  setPanelAbierto]  = useState(false)
   const [usuarioId, setUsuarioId] = useState<string | null>(null)
   const [popupNotif, setPopupNotif] = useState<any | null>(null)
+  const [popupUrgente, setPopupUrgente] = useState<any | null>(null)
 
   const rolLabel: Record<string, string> = {
     admin:            'Administrador',
@@ -39,6 +40,7 @@ export default function Topbar() {
     wa_nuevo:         { icon: '💬', color: '#25D366' },
     wa_enviado:       { icon: '📤', color: '#0F6E56' },
     info:             { icon: '📌', color: '#534AB7' },
+    asesor_urgente: { icon: '🚨', color: '#E24B4A' },
   }
 
   useEffect(() => {
@@ -91,21 +93,26 @@ export default function Topbar() {
     const channel = supabase
       .channel(`notifs-${usuarioId}`)
       .on('postgres_changes', {
-          event:  'INSERT',
-          schema: 'public',
-          table:  'notificaciones',
-          filter: `usuario_id=eq.${usuarioId}`,
-        }, payload => {
-          const nueva = payload.new
-          setNotifs(prev => [nueva, ...prev])
+        event:  'INSERT',
+        schema: 'public',
+        table:  'notificaciones',
+        filter: `usuario_id=eq.${usuarioId}`,
+      }, payload => {
+        const nueva = payload.new
+        console.log('>>> Notificación recibida:', nueva)
+        setNotifs(prev => [nueva, ...prev])
 
-          // Sonido
-          audioRef.current?.play().catch(() => {})
+        // Sonido
+        audioRef.current?.play().catch(() => {})
 
-          // Popup
+        // Popup según tipo
+        if (nueva.tipo === 'asesor_urgente') {
+          setPopupUrgente(nueva)
+        } else {
           setPopupNotif(nueva)
           setTimeout(() => setPopupNotif(null), 5000)
-        })
+        }
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -340,6 +347,78 @@ export default function Topbar() {
           </div>
         )
       })()}
+      {popupUrgente && (
+        <div className="fixed inset-0 flex items-center justify-center z-[100]"
+          style={{ background: 'rgba(226,75,74,0.2)', backdropFilter: 'blur(6px)' }}>
+          
+          <div className="rounded-2xl overflow-hidden mx-4"
+            style={{
+              background: '#fff',
+              boxShadow:  '0 24px 80px rgba(226,75,74,0.4)',
+              border:     '2px solid #E24B4A',
+              maxWidth:   420,
+              width:      '100%',
+              animation:  'shake 0.5s ease-in-out infinite',
+            }}>
+
+            <style>{`
+              @keyframes shake {
+                0%, 100% { transform: translateX(0);    }
+                15%       { transform: translateX(-8px); }
+                30%       { transform: translateX(8px);  }
+                45%       { transform: translateX(-6px); }
+                60%       { transform: translateX(6px);  }
+                75%       { transform: translateX(-4px); }
+                90%       { transform: translateX(4px);  }
+              }
+              @keyframes pulseRed {
+                0%, 100% { background: #E24B4A; }
+                50%       { background: #C73332; }
+              }
+            `}</style>
+
+            {/* Header rojo */}
+            <div className="px-6 py-5 text-center"
+              style={{ background: '#E24B4A', animation: 'pulseRed 1s ease-in-out infinite' }}>
+              <div style={{ fontSize: 40 }}>🚨</div>
+              <div className="text-[18px] font-black text-white mt-2">
+                ¡Cliente solicita asesor!
+              </div>
+              <div className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                Requiere atención inmediata — Recepción WhatsApp
+              </div>
+            </div>
+
+            {/* Cuerpo */}
+            <div className="px-6 py-5">
+              <div className="rounded-xl px-4 py-3 mb-4 text-center"
+                style={{ background: '#FEF2F2', border: '1px solid rgba(226,75,74,0.2)' }}>
+                <div className="text-[13px] font-semibold" style={{ color: '#111' }}>
+                  {popupUrgente.descripcion}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <a href="/chats"
+                  onClick={() => setPopupUrgente(null)}
+                  className="flex-1 py-3 rounded-xl text-[14px] font-black text-center no-underline transition-all"
+                  style={{ background: '#E24B4A', color: '#fff', boxShadow: '0 4px 16px rgba(226,75,74,0.4)' }}>
+                  💬 Atender ahora
+                </a>
+                <button onClick={() => setPopupUrgente(null)}
+                  className="px-4 py-3 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
+                  style={{ background: '#F3F4F6', color: '#666' }}>
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="text-[11px] text-center mt-3" style={{ color: '#9C9890' }}>
+                Esta alerta no desaparecerá hasta que la atiendas
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
