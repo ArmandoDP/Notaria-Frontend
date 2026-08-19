@@ -60,13 +60,14 @@ export default function ModalValidandoDoc({ docId, nombreDoc, onClose }: Props) 
     }, 2000)
 
     // Timeout de 60 segundos
+    // Cambiar de 60000 a 120000 (2 minutos)
     const timeout = setTimeout(() => {
       clearInterval(interval)
       if (!resultado) {
         setResultado({ estado_ia: 'recibido', mensaje_ia: 'El análisis está tardando más de lo esperado. Revisa en unos momentos.', campos: {} })
         setPasoActual(PASOS.length - 1)
       }
-    }, 60000)
+    }, 120000)  // ← 2 minutos
 
     return () => { clearInterval(interval); clearTimeout(timeout) }
   }, [docId])

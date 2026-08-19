@@ -347,10 +347,11 @@ export default function Topbar() {
           </div>
         )
       })()}
+      {/* Popup URGENTE — opción 0 */}
       {popupUrgente && (
         <div className="fixed inset-0 flex items-center justify-center z-[100]"
           style={{ background: 'rgba(226,75,74,0.2)', backdropFilter: 'blur(6px)' }}>
-          
+
           <div className="rounded-2xl overflow-hidden mx-4"
             style={{
               background: '#fff',
@@ -377,7 +378,6 @@ export default function Topbar() {
               }
             `}</style>
 
-            {/* Header rojo */}
             <div className="px-6 py-5 text-center"
               style={{ background: '#E24B4A', animation: 'pulseRed 1s ease-in-out infinite' }}>
               <div style={{ fontSize: 40 }}>🚨</div>
@@ -389,7 +389,6 @@ export default function Topbar() {
               </div>
             </div>
 
-            {/* Cuerpo */}
             <div className="px-6 py-5">
               <div className="rounded-xl px-4 py-3 mb-4 text-center"
                 style={{ background: '#FEF2F2', border: '1px solid rgba(226,75,74,0.2)' }}>
