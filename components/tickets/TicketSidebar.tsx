@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import AIButton from '@/components/sections/notaria-ai/AIButton'
-// import { useUsuario } from '@/hooks/useUsuario'
+import t from './ticket.module.css'
+import { Ic, Modal, useModal, CANAL_LABEL } from './ticketUi'
 
 interface Props {
   ticket:                  any
@@ -19,8 +19,8 @@ interface Props {
   folioEscrituraVinculado: boolean
   reasignando:             boolean
   nuevoTramiteId:          string
-  nuevoAreaId: string
-  nuevoCanal:   string
+  nuevoAreaId:             string
+  nuevoCanal:              string
   onFolioDBAChange:        (val: string) => void
   onFolioEscrituraChange:  (val: string) => void
   onGuardarFolioDBA:       () => void
@@ -31,15 +31,33 @@ interface Props {
   onNuevoTramiteId:         (val: string) => void
   onNuevoAreaId:            (val: string) => void
   onGuardarReasignacion:    () => void
-  onEnviarRecordatorio:     () => void
+  onEnviarRecordatorio:     () => void | Promise<void>
   onDescargarExpediente:    () => void
   onCopiarLink:             () => void
-  onCancelar: () => void
-  onReactivar: () => void
-  onCopiarLinkParte: (url: string, rolLabel: string) => void
-  onCompletar: (comentario: string) => void
-  onNuevoCanal: (val: string) => void
+  onCancelar:               () => void | Promise<void>
+  onReactivar:              () => void | Promise<void>
+  onCopiarLinkParte:        (url: string, rolLabel: string) => void
+  onCompletar:              (comentario: string) => void | Promise<void>
+  onNuevoCanal:             (val: string) => void
+  onAviso?:                 (texto: string, error?: boolean) => void
 }
+
+const CONSULTAS = [
+  { label: 'Validación INE vigente',        url: 'https://listanominal.ine.mx/scpln/' },
+  { label: 'Descarga CURP',                 url: 'https://www.gob.mx/curp/' },
+  { label: 'Validación de actas',           url: 'https://cevar.registrocivil.gob.mx/eVAR/ConsultaFolio.jsp' },
+  { label: 'Portal UIF (lavado de dinero)', url: 'https://sppld.sat.gob.mx/pld/index.html' },
+  { label: 'Cédula profesional',            url: 'https://cedulaprofesional.sep.gob.mx/cedula/indexAvanzada.action' },
+  { label: 'Licencias Guanajuato',          url: 'https://seguridad.guanajuato.gob.mx/licencias_conducir/consulta-de-licencia-de-conducir/' },
+  { label: 'Predial Celaya',                url: 'https://td.celaya.biz/multipagosws/' },
+  { label: 'Predial San Miguel de Allende', url: 'https://pago-predial.sanmiguelallende.gob.mx/simprecad.php' },
+  { label: 'Predial Apaseo el Grande',      url: 'https://pagos.apaseoelgrande.gob.mx/simprecad.php' },
+  { label: 'RNOA (alimentos)',              url: 'https://rnoa.dif.gob.mx/' },
+  { label: 'Códigos postales',              url: 'https://www.correosdemexico.gob.mx/SSLServicios/ConsultaCP/Descarga.aspx' },
+  { label: 'Leyes federales',               url: 'https://www.diputados.gob.mx/LeyesBiblio/index.htm' },
+  { label: 'Leyes de Guanajuato',           url: 'https://www.congresogto.gob.mx/' },
+]
+const CONSULTAS_VISIBLES = 4
 
 export default function TicketSidebar({
   ticket, estado, saving, tramites, areas, conversacionId,
@@ -51,600 +69,398 @@ export default function TicketSidebar({
   onSetReasignando, onNuevoTramiteId, onNuevoAreaId, onNuevoCanal,
   onGuardarReasignacion, onEnviarRecordatorio,
   onCopiarLink, onCopiarLinkParte, onCancelar, onReactivar, onCompletar,
+  onAviso,
 }: Props) {
-
-  // ← Hook DENTRO del componente
-  // const { esAdmin, esLead, esNotario, puedeEditar } = useUsuario()
-
   const tramite = ticket.tramites_config
   const area    = ticket.areas
+  const api     = process.env.NEXT_PUBLIC_API_URL
 
   const [descargando, setDescargando] = useState(false)
   const [fase, setFase] = useState('')
-  const [modalCancelar, setModalCancelar] = useState(false)
-  const [reactivando, setReactivando] = useState(false)
-  const [modalCompletar, setModalCompletar] = useState(false)
+  const [enviandoRec, setEnviandoRec] = useState(false)
+  const [verConsultas, setVerConsultas] = useState(false)
   const [comentarioCierre, setComentarioCierre] = useState('')
   const [guardandoCierre, setGuardandoCierre] = useState(false)
+  const [reactivandoAhora, setReactivandoAhora] = useState(false)
+
+  const mCancelar  = useModal()
+  const mReactivar = useModal()
+  const mCompletar = useModal()
+
+  const avisar = (texto: string, error = false) => (onAviso ? onAviso(texto, error) : alert(texto))
 
   async function descargar() {
     setDescargando(true)
-    setFase('Recopilando documentos...')
-    const fases = ['Recopilando documentos...','Comprimiendo archivos...','Generando expediente ZIP...','Casi listo...']
+    const fases = ['Recopilando documentos…', 'Comprimiendo archivos…', 'Generando expediente ZIP…', 'Casi listo…']
+    setFase(fases[0])
     let i = 0
     const intervalo = setInterval(() => { i++; if (i < fases.length) setFase(fases[i]) }, 1200)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/docs/descargar-expediente/${ticket.id}`)
+      const res = await fetch(`${api}/api/docs/descargar-expediente/${ticket.id}`)
       clearInterval(intervalo)
-      if (!res.ok) { const err = await res.json(); alert(`❌ ${err.detail}`); return }
-      setFase('¡Listo para descargar!')
-      await new Promise(r => setTimeout(r, 600))
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        avisar(err.detail || 'No se pudo generar el expediente', true)
+        return
+      }
+      setFase('Listo, descargando…')
+      await new Promise(r => setTimeout(r, 500))
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href = url; a.download = `${ticket.numero}.zip`; a.click()
       URL.revokeObjectURL(url)
+      avisar('Expediente descargado')
     } catch {
       clearInterval(intervalo)
-      alert('Error al generar el expediente')
+      avisar('No se pudo generar el expediente', true)
     } finally {
       setDescargando(false)
       setFase('')
     }
   }
 
+  async function recordatorio() {
+    setEnviandoRec(true)
+    try { await onEnviarRecordatorio() } finally { setEnviandoRec(false) }
+  }
+
+  const partesConLink = (ticket.partes || [])
+    .filter((p: any) => p.upload_token)
+    .sort((a: any, b: any) => a.orden - b.orden)
+  const tieneDocsOperacion = (ticket.documentos || []).some((d: any) =>
+    d.doc_tipos_config?.para_rol === 'operacion' ||
+    d.doc_tipos_config?.para_rol === 'inmueble' ||
+    (!d.doc_tipos_config?.para_rol && !d.parte_id)
+  )
+
+  let n = 0
+  const delay = () => `${t.rise} ${[t.d1, t.d2, t.d3, t.d4, t.d5, t.d6, t.d7, t.d8, t.d9][Math.min(n++, 8)]}`
+
   return (
-    <div className="flex flex-col gap-3">
+    <aside className={t.side}>
 
-      {/* Notaría AI — solo si puede editar */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-          Asistente de IA
-        </div>
-        <AIButton href={`/notaria-ai?ticket=${ticket.id}`} label="Consultar con Notaría AI" />
-        <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-          Powered by Notaría AI GPT-4o
-        </div>
-      </div>
-
-      {/* Folios — solo admin y lead */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>Folios</div>
-        <div className="mb-4">
-          <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Folio DBA</label>
-          {folioDBA && (
-            <div className="text-[12px] font-mono font-bold mb-2 px-3 py-1.5 rounded-lg"
-              style={{ background: '#FEF3C7', color: '#854F0B' }}>{folioDBA}</div>
-          )}
-          <input type="text" value={folioDBA} onChange={e => onFolioDBAChange(e.target.value)}
-            placeholder="DBA-2026-XXXX"
-            className="w-full px-3 py-2 rounded-xl text-[13px] font-mono outline-none mb-2"
-            style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }} />
-          <button type="button" onClick={onGuardarFolioDBA} disabled={!folioDBA.trim() || saving}
-            className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none mb-2"
-            style={{ background: folioDBA.trim() ? '#111' : '#F0F0F0', color: folioDBA.trim() ? '#fff' : '#CCC' }}>
-            Vincular folio DBA
+      {/* Acciones rápidas */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Acciones</span></div>
+        <div className={`${t.cardBody} ${t.stack}`}>
+          <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={recordatorio} disabled={enviandoRec}>
+            {enviandoRec ? <span className={t.spin} style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,.3)' }} /> : <Ic n="wa" />}
+            {enviandoRec ? 'Enviando…' : 'Enviar recordatorio por WhatsApp'}
           </button>
-          {folioDBAVinculado && estado !== 'folio_dba' && estado !== 'escritura_dba' && (
-            <button type="button" onClick={onCambiarEstadoFolioDBA} disabled={saving}
-              className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none"
-              style={{ background: '#FEF3C7', color: '#854F0B', border: '1px solid #F0B429' }}>
-              → Cambiar estado a Folio DBA
-            </button>
+          {conversacionId && (
+            <a href={`/chats?conv=${conversacionId}`} className={`${t.btn} ${t.btnLine}`}>
+              <Ic n="wa" /> Ver conversación
+            </a>
           )}
+          <a href={`/notaria-ai?ticket=${ticket.id}`} className={`${t.btn} ${t.btnLine}`}>
+            <Ic n="ai" /> Consultar con Notaría AI
+          </a>
         </div>
-        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginBottom: '16px' }} />
-        <div>
-          <label className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Folio Escritura</label>
-          {folioEscritura && (
-            <div className="text-[12px] font-mono font-bold mb-2 px-3 py-1.5 rounded-lg"
-              style={{ background: '#D1FAE5', color: '#0F6E56' }}>{folioEscritura}</div>
-          )}
-          <input type="text" value={folioEscritura} onChange={e => onFolioEscrituraChange(e.target.value)}
-            placeholder="ESC-2026-XXXX"
-            className="w-full px-3 py-2 rounded-xl text-[13px] font-mono outline-none mb-2"
-            style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }} />
-          <button type="button" onClick={onGuardarFolioEscritura} disabled={!folioEscritura.trim() || saving}
-            className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none mb-2"
-            style={{ background: folioEscritura.trim() ? '#1B5FA5' : '#F0F0F0', color: folioEscritura.trim() ? '#fff' : '#CCC' }}>
-            Vincular folio escritura
-          </button>
-          {folioEscrituraVinculado && estado !== 'escritura_dba' && (
-            <button type="button" onClick={onCambiarEstadoEscritura} disabled={saving}
-              className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none"
-              style={{ background: '#D1FAE5', color: '#0F6E56', border: '1px solid #86EFAC' }}>
-              → Cambiar estado a Escritura DBA
-            </button>
-          )}
-        </div>
-      </div>
-      
+      </section>
 
-      {/* Links de carga — solo si puede editar */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-          Links de carga
+      {/* Documentos y descargas */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Descargas</span></div>
+        <div className={`${t.cardBody} ${t.stack}`}>
+          <button type="button" className={`${t.btn} ${t.btnLine}`} onClick={descargar} disabled={descargando}>
+            <Ic n="box" /> Expediente completo (ZIP)
+          </button>
+          <div className={t.row2}>
+            <a href={`${api}/api/docs/generar-solicitud/${ticket.id}?formato=docx`} target="_blank" rel="noopener noreferrer" className={`${t.btn} ${t.btnGhost}`}>
+              <Ic n="download" size={15} /> Word
+            </a>
+            <a href={`${api}/api/docs/generar-solicitud/${ticket.id}?formato=pdf`} target="_blank" rel="noopener noreferrer" className={`${t.btn} ${t.btnGhost}`}>
+              <Ic n="download" size={15} /> PDF
+            </a>
+          </div>
+          <div className={t.cardNote} style={{ marginTop: 0 }}>Word y PDF generan la solicitud del trámite</div>
         </div>
-        {ticket.partes && ticket.partes.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {ticket.partes
-              .filter((p: any) => p.upload_token)
-              .sort((a: any, b: any) => a.orden - b.orden)
-              .map((parte: any) => {
+      </section>
+
+      {/* Folios */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Folios</span></div>
+        <div className={t.cardBody}>
+          <label className={t.label} htmlFor="tk-folio-dba">Folio DBA</label>
+          {folioDBAVinculado && folioDBA && (
+            <div className={t.folio}><span>{folioDBA}</span><small>Vinculado</small></div>
+          )}
+          <div className={t.stack}>
+            <input id="tk-folio-dba" className={`${t.input} ${t.mono}`} value={folioDBA}
+              onChange={e => onFolioDBAChange(e.target.value)} placeholder="DBA-2026-XXXX" />
+            <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={onGuardarFolioDBA} disabled={!folioDBA.trim() || saving}>
+              <Ic n="link" size={15} /> Vincular folio DBA
+            </button>
+            {folioDBAVinculado && estado !== 'folio_dba' && estado !== 'escritura_dba' && (
+              <button type="button" className={`${t.btn} ${t.btnLine} ${t.fadeSwap}`} onClick={onCambiarEstadoFolioDBA} disabled={saving}>
+                Pasar a etapa Folio DBA →
+              </button>
+            )}
+          </div>
+
+          <div className={t.divider} />
+
+          <label className={t.label} htmlFor="tk-folio-esc">Folio de escritura</label>
+          {folioEscrituraVinculado && folioEscritura && (
+            <div className={t.folio}><span>{folioEscritura}</span><small>Vinculado</small></div>
+          )}
+          <div className={t.stack}>
+            <input id="tk-folio-esc" className={`${t.input} ${t.mono}`} value={folioEscritura}
+              onChange={e => onFolioEscrituraChange(e.target.value)} placeholder="ESC-2026-XXXX" />
+            <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={onGuardarFolioEscritura} disabled={!folioEscritura.trim() || saving}>
+              <Ic n="link" size={15} /> Vincular folio de escritura
+            </button>
+            {folioEscrituraVinculado && estado !== 'escritura_dba' && (
+              <button type="button" className={`${t.btn} ${t.btnLine} ${t.fadeSwap}`} onClick={onCambiarEstadoEscritura} disabled={saving}>
+                Pasar a etapa Escritura DBA →
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Links de carga */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Links de carga</span></div>
+        <div className={t.cardBody}>
+          {partesConLink.length === 0 && !(tieneDocsOperacion && ticket.upload_token) ? (
+            <div className={t.cardNote} style={{ marginTop: 0 }}>Sin partes configuradas</div>
+          ) : (
+            <div className={t.list}>
+              {partesConLink.map((parte: any) => {
                 const rolLabel = parte.rol.replace(/_/g, ' ')
                 const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/upload-parte/${parte.upload_token}`
                 return (
-                  <div key={parte.id} className="flex items-center justify-between">
+                  <div key={parte.id} className={t.listRow}>
                     <div>
-                      <div className="text-[11px] font-semibold capitalize" style={{ color: '#333' }}>{rolLabel}</div>
-                      {parte.nombre_completo && (
-                        <div className="text-[10px]" style={{ color: '#9C9890' }}>{parte.nombre_completo}</div>
-                      )}
+                      <b>{rolLabel}</b>
+                      {parte.nombre_completo && <small>{parte.nombre_completo}</small>}
                     </div>
-                    <button onClick={() => onCopiarLinkParte(url, rolLabel)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
-                      style={{ background: '#E6F1FB', color: '#185FA5' }}>
-                      📋 Copiar
+                    <button type="button" className={t.chipBtn} onClick={() => onCopiarLinkParte(url, rolLabel)}>
+                      <Ic n="link" size={12} /> Copiar
                     </button>
                   </div>
                 )
               })}
-          </div>
-        ) : (
-          <div className="text-[11px] text-center py-2" style={{ color: '#9C9890' }}>Sin partes configuradas</div>
-        )}
-        {(() => {
-          const tieneDocsOperacion = (ticket.documentos || []).some((d: any) =>
-            d.doc_tipos_config?.para_rol === 'operacion' ||
-            d.doc_tipos_config?.para_rol === 'inmueble' ||
-            (!d.doc_tipos_config?.para_rol && !d.parte_id)
-          )
-          if (!tieneDocsOperacion || !ticket.upload_token) return null
-          return (
-            <div className="flex items-center justify-between gap-2 py-1 pt-2"
-              style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold" style={{ color: '#333' }}>Documentos de la operación</div>
-                <div className="text-[10px]" style={{ color: '#9C9890' }}>Documentos generales del trámite</div>
-              </div>
-              <button onClick={() => onCopiarLink()}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
-                style={{ background: '#E6F1FB', color: '#185FA5' }}>
-                📋 Copiar
-              </button>
+              {tieneDocsOperacion && ticket.upload_token && (
+                <div className={t.listRow}>
+                  <div>
+                    <b style={{ textTransform: 'none' }}>Documentos de la operación</b>
+                    <small>Generales del trámite</small>
+                  </div>
+                  <button type="button" className={t.chipBtn} onClick={() => onCopiarLink()}>
+                    <Ic n="link" size={12} /> Copiar
+                  </button>
+                </div>
+              )}
             </div>
-          )
-        })()}
-        <div className="text-[10px] mt-3 text-center" style={{ color: '#9C9890' }}>
-          Cada link es exclusivo para su parte
+          )}
+          <div className={t.cardNote}>Cada link es exclusivo para su parte</div>
         </div>
-      </div>
+      </section>
 
-      {/* Links Gubernamentales */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-          Consultas y validaciones
-        </div>
-        <div className="flex flex-col gap-2">
-          {[
-            { label: 'Validación INE vigente',          url: 'https://listanominal.ine.mx/scpln/' },
-            { label: 'Cédula profesional',              url: 'https://cedulaprofesional.sep.gob.mx/cedula/indexAvanzada.action' },
-            { label: 'Licencias Gto.',                  url: 'https://seguridad.guanajuato.gob.mx/licencias_conducir/consulta-de-licencia-de-conducir/' },
-            { label: 'Validación actas',                url: 'https://cevar.registrocivil.gob.mx/eVAR/ConsultaFolio.jsp' },
-            { label: 'Descarga CURP',                   url: 'https://www.gob.mx/curp/' },
-            { label: 'Predial Celaya',                  url: 'https://td.celaya.biz/multipagosws/' },
-            { label: 'Predial San Miguel de Allende',   url: 'https://pago-predial.sanmiguelallende.gob.mx/simprecad.php' },
-            { label: 'Predial Apaseo el Grande',        url: 'https://pagos.apaseoelgrande.gob.mx/simprecad.php' },
-            { label: 'RNOA (Alimentos)',                url: 'https://rnoa.dif.gob.mx/' },
-            { label: 'Códigos postales',                url: 'https://www.correosdemexico.gob.mx/SSLServicios/ConsultaCP/Descarga.aspx' },
-            { label: 'Leyes federales',                 url: 'https://www.diputados.gob.mx/LeyesBiblio/index.htm' },
-            { label: 'Leyes Guanajuato',                url: 'https://www.congresogto.gob.mx/' },
-            { label: 'Portal UIF (Lavado)',             url: 'https://sppld.sat.gob.mx/pld/index.html' },
-          ].map(link => (
-            <div key={link.url} className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold truncate flex-1 mr-2" style={{ color: '#333' }}>
-                {link.label}
-              </div>
-              <a href={link.url} target="_blank" rel="noopener noreferrer"
-                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold no-underline flex-shrink-0"
-                style={{ background: '#E6F1FB', color: '#185FA5' }}>
-                ↗ Abrir
-              </a>
-            </div>
-          ))}
-        </div>
-        <div className="text-[10px] mt-3 text-center" style={{ color: '#9C9890' }}>
-          Portales gubernamentales de consulta
-        </div>
-      </div>
-
-      {/* Reasignar — solo admin y lead */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#9C9890' }}>
-            Trámite, área y canal
-          </div>
-          <button onClick={() => onSetReasignando(!reasignando)}
-            className="text-[11px] cursor-pointer border-none bg-transparent font-medium"
-            style={{ color: reasignando ? '#E24B4A' : '#1B5FA5' }}>
+      {/* Trámite, área y canal */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}>
+          <span className={t.cardTitle}>Trámite, área y canal</span>
+          <button type="button" className={`${t.linkBtn} ${reasignando ? t.linkBtnRed : ''}`} onClick={() => onSetReasignando(!reasignando)}>
             {reasignando ? 'Cancelar' : 'Reasignar'}
           </button>
         </div>
-        {reasignando ? (
-          <div className="flex flex-col gap-2">
-            <div>
-              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Trámite</div>
-              <select value={nuevoTramiteId} onChange={e => onNuevoTramiteId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
-                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
-                {[...tramites].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(t => (
-                  <option key={t.id} value={t.id}>{t.nombre}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Canal</div>
-              <select value={nuevoCanal} onChange={e => onNuevoCanal(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
-                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
-                <option value="front_desk">Front desk</option>
-                <option value="telefono">Teléfono</option>
-                <option value="mail">Correo</option>
-                <option value="whatsapp_vip">WhatsApp VIP</option>
-                <option value="whatsapp">WhatsApp</option>
-              </select>
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold mb-1.5 block" style={{ color: '#666' }}>Área</div>
-              <select value={nuevoAreaId} onChange={e => onNuevoAreaId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none cursor-pointer"
-                style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}>
-                {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-              </select>
-            </div>
-            <button onClick={onGuardarReasignacion} disabled={saving}
-              className="w-full py-2 rounded-xl text-[12px] font-bold cursor-pointer border-none"
-              style={{ background: '#111', color: '#fff' }}>
-              Guardar reasignación
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Trámite</div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: tramite?.color_hex || '#666' }} />
-                <span className="text-[12px] font-semibold" style={{ color: '#111' }}>{tramite?.nombre || '—'}</span>
+        <div className={t.cardBody}>
+          {reasignando ? (
+            <div key="editar" className={`${t.fieldGap} ${t.fadeSwap}`}>
+              <div>
+                <label className={t.label} htmlFor="tk-re-tramite">Trámite</label>
+                <select id="tk-re-tramite" className={t.select} value={nuevoTramiteId} onChange={e => onNuevoTramiteId(e.target.value)}>
+                  {[...tramites].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(tr => (
+                    <option key={tr.id} value={tr.id}>{tr.nombre}</option>
+                  ))}
+                </select>
               </div>
+              <div>
+                <label className={t.label} htmlFor="tk-re-canal">Canal</label>
+                <select id="tk-re-canal" className={t.select} value={nuevoCanal} onChange={e => onNuevoCanal(e.target.value)}>
+                  {Object.entries(CANAL_LABEL).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={t.label} htmlFor="tk-re-area">Área</label>
+                <select id="tk-re-area" className={t.select} value={nuevoAreaId} onChange={e => onNuevoAreaId(e.target.value)}>
+                  {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                </select>
+              </div>
+              <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={onGuardarReasignacion} disabled={saving}>
+                Guardar reasignación
+              </button>
             </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Canal</div>
-              <span className="text-[12px] font-medium capitalize" style={{ color: '#111' }}>
-                {ticket.canal?.replace(/_/g, ' ') || '—'}
-              </span>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: '#9C9890' }}>Área</div>
-              <span className="text-[12px] font-medium" style={{ color: '#111' }}>{area?.nombre || '—'}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Descargar expediente — todos */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>Expediente</div>
-        <button onClick={descargar} disabled={descargando}
-          className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
-          style={{ background: descargando ? '#F3F4F6' : '#111', color: descargando ? '#9CA3AF' : '#fff' }}>
-          {descargando ? '⏳ Generando...' : '📦 Descargar expediente ZIP'}
-        </button>
-        <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-          Descarga los documentos subidos hasta ahora
-        </div>
-      </div>
-
-      {/* Descargar solicitud */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-          Descargar solicitud
-        </div>
-        <div className="flex flex-col gap-2">
-          <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${ticket.id}?formato=docx`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline transition-all"
-            style={{ background: '#E6F1FB', color: '#185FA5' }}>
-            📄 Descargar Word (.docx)
-          </a>
-          <a href={`${process.env.NEXT_PUBLIC_API_URL}/api/docs/generar-solicitud/${ticket.id}?formato=pdf`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline transition-all"
-            style={{ background: '#FEE2E2', color: '#991B1B' }}>
-            📕 Descargar PDF
-          </a>
-        </div>
-      </div>
-
-      {/* WhatsApp — solo si puede editar */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>WhatsApp</div>
-        <button type="button" onClick={onEnviarRecordatorio}
-          className="w-full py-2 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
-          style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-          Enviar recordatorio
-        </button>
-      </div>
-
-      {/* Info — todos */}
-      <div className="bg-white rounded-2xl p-4"
-        style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>Información</div>
-        <div className="flex flex-col gap-2.5 text-[12px]">
-          {[
-            { label: 'Canal',  value: ticket.canal?.replace('_', ' ') || '—' },
-            { label: 'Creado', value: format(new Date(ticket.created_at), "d MMM yyyy", { locale: es }) },
-            { label: 'SLA',    value: format(new Date(ticket.sla_vence_at), "d MMM yyyy", { locale: es }) },
-          ].map(r => (
-            <div key={r.label} className="flex justify-between">
-              <span style={{ color: '#9C9890' }}>{r.label}</span>
-              <span className="font-medium" style={{ color: '#333' }}>{r.value}</span>
-            </div>
-          ))}
-          {conversacionId && (
-            <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-              <a href={`/chats?conv=${conversacionId}`}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-[12px] font-semibold no-underline"
-                style={{ background: '#E9F7EF', color: '#1A6B3C' }}>
-                💬 Ver conversación WhatsApp
-              </a>
+          ) : (
+            <div key="ver" className={`${t.list} ${t.fadeSwap}`}>
+              <div className={t.kv}><span>Trámite</span><b style={{ textTransform: 'none' }}>{tramite?.nombre || '—'}</b></div>
+              <div className={t.kv}><span>Área</span><b>{area?.nombre || '—'}</b></div>
+              <div className={t.kv}><span>Canal</span><b>{CANAL_LABEL[ticket.canal] || ticket.canal || '—'}</b></div>
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Cancelar / Reactivar ticket */}
-      {estado !== 'cancelado' ? (
-        <div className="bg-white rounded-2xl p-4"
-          style={{ border: '1px solid rgba(226,75,74,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <button onClick={() => setModalCancelar(true)}
-            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none"
-            style={{ background: '#FEE2E2', color: '#991B1B' }}>
-            🚫 Cancelar expediente
-          </button>
-          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-            Esta acción marcará el expediente como cancelado
+      {/* Información */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Información</span></div>
+        <div className={t.cardBody}>
+          <div className={t.list}>
+            <div className={t.kv}><span>Creado</span><b>{format(new Date(ticket.created_at), "d 'de' MMM yyyy", { locale: es })}</b></div>
+            <div className={t.kv}><span>Vence (plazo)</span><b>{format(new Date(ticket.sla_vence_at), "d 'de' MMM yyyy", { locale: es })}</b></div>
           </div>
         </div>
+      </section>
+
+      {/* Consultas y validaciones */}
+      <section className={`${t.card} ${delay()}`}>
+        <div className={t.cardHead}><span className={t.cardTitle}>Consultas y validaciones</span></div>
+        <div className={t.cardBody}>
+          <div className={t.list}>
+            {CONSULTAS.slice(0, CONSULTAS_VISIBLES).map(link => (
+              <div key={link.url} className={t.listRow}>
+                <div><b style={{ textTransform: 'none' }}>{link.label}</b></div>
+                <a href={link.url} target="_blank" rel="noopener noreferrer" className={t.chipBtn}><Ic n="external" size={12} /> Abrir</a>
+              </div>
+            ))}
+          </div>
+          <div className={`${t.collapse} ${verConsultas ? t.collapseOpen : ''}`}>
+            <div>
+              <div className={t.list} style={{ borderTop: '1px dashed var(--line)' }}>
+                {CONSULTAS.slice(CONSULTAS_VISIBLES).map(link => (
+                  <div key={link.url} className={t.listRow}>
+                    <div><b style={{ textTransform: 'none' }}>{link.label}</b></div>
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" className={t.chipBtn} tabIndex={verConsultas ? 0 : -1}>
+                      <Ic n="external" size={12} /> Abrir
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button type="button" className={`${t.btn} ${t.btnGhost}`} style={{ marginTop: 10 }} onClick={() => setVerConsultas(v => !v)} aria-expanded={verConsultas}>
+            {verConsultas ? 'Ver menos' : `Ver las ${CONSULTAS.length}`}
+            <span style={{ display: 'flex', transition: 'transform .3s', transform: verConsultas ? 'rotate(180deg)' : 'none' }}><Ic n="chevron" size={14} /></span>
+          </button>
+        </div>
+      </section>
+
+      {/* Cierre del expediente */}
+      {estado === 'completado' ? (
+        <section className={`${t.card} ${t.doneCard} ${delay()}`}>
+          <div className={t.doneIc}><Ic n="check" size={22} sw={2.6} /></div>
+          <b>Expediente completado</b>
+          <span>Este expediente se cerró correctamente</span>
+        </section>
+      ) : estado === 'cancelado' ? (
+        <section className={`${t.card} ${delay()}`}>
+          <div className={t.cardHead}><span className={t.cardTitle}>Expediente cancelado</span></div>
+          <div className={t.cardBody}>
+            <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={mReactivar.abrir}>
+              <Ic n="undo" /> Reactivar expediente
+            </button>
+            <div className={t.cardNote}>Volverá a la etapa Asignado</div>
+          </div>
+        </section>
       ) : (
-        <div className="bg-white rounded-2xl p-4"
-          style={{ border: '1px solid rgba(59,109,17,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <div className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#9C9890' }}>
-            Expediente cancelado
+        <section className={`${t.card} ${delay()}`}>
+          <div className={t.cardHead}><span className={t.cardTitle}>Cierre</span></div>
+          <div className={`${t.cardBody} ${t.stack}`}>
+            <button type="button" className={`${t.btn} ${t.btnDark}`} onClick={() => { setComentarioCierre(''); mCompletar.abrir() }}>
+              <Ic n="check" /> Marcar como completado
+            </button>
+            <button type="button" className={`${t.btn} ${t.btnRed}`} onClick={mCancelar.abrir}>
+              <Ic n="ban" /> Cancelar expediente
+            </button>
           </div>
-          <button onClick={() => setReactivando(true)}
-            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
-            style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-            ✅ Reactivar expediente
-          </button>
-          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-            El expediente volverá al estado Asignado
-          </div>
-        </div>
+        </section>
       )}
 
-      {/* Completar ticket — solo si no está cancelado ni completado */}
-      {estado !== 'cancelado' && estado !== 'completado' && (
-        <div className="bg-white rounded-2xl p-4"
-          style={{ border: '1px solid rgba(59,109,17,0.15)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <button onClick={() => { setComentarioCierre(''); setModalCompletar(true) }}
-            className="w-full py-2.5 rounded-xl text-[12px] font-semibold cursor-pointer border-none transition-all"
-            style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-            ✅ Marcar como completado
-          </button>
-          <div className="text-[10px] mt-2 text-center" style={{ color: '#9C9890' }}>
-            Se requiere un comentario de cierre
-          </div>
-        </div>
-      )}
-
-      {/* Badge completado */}
-      {estado === 'completado' && (
-        <div className="bg-white rounded-2xl p-4 text-center"
-          style={{ border: '1px solid rgba(59,109,17,0.2)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <div className="text-[24px] mb-1">✅</div>
-          <div className="text-[13px] font-bold" style={{ color: '#3B6D11' }}>Expediente completado</div>
-          <div className="text-[11px] mt-1" style={{ color: '#9C9890' }}>Este expediente fue cerrado exitosamente</div>
-        </div>
-      )}
-      
-      {/* Modal compresión */}
+      {/* ── Modales ── */}
       {descargando && (
-        <div className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-          <div className="rounded-2xl p-6 w-80 text-center"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-            <div className="relative w-16 h-16 mx-auto mb-4">
-              <div className="absolute inset-0 rounded-2xl flex items-center justify-center text-[28px]"
-                style={{ background: '#F7F7F5' }}>📦</div>
-              <svg className="absolute inset-0 w-full h-full" style={{ transform: 'rotate(-90deg)' }} viewBox="0 0 64 64">
-                <circle cx="32" cy="32" r="28" fill="none" stroke="#F3F4F6" strokeWidth="4"/>
-                <circle cx="32" cy="32" r="28" fill="none" stroke="#111" strokeWidth="4"
-                  strokeLinecap="round" strokeDasharray="175" strokeDashoffset="175"
-                  style={{ animation: 'zipProgress 3s ease-in-out infinite' }}/>
+        <Modal ancho={320}>
+          <div className={t.zip}>
+            <div className={t.zipRing}>
+              <svg viewBox="0 0 64 64" width="64" height="64">
+                <circle cx="32" cy="32" r="28" fill="none" stroke="#ececea" strokeWidth="3" />
+                <circle className={t.arc} cx="32" cy="32" r="28" fill="none" stroke="#111" strokeWidth="3" strokeLinecap="round" />
               </svg>
+              <span><Ic n="box" size={22} /></span>
             </div>
-            <div className="text-[15px] font-bold mb-1" style={{ color: '#111' }}>Generando expediente</div>
-            <div className="text-[13px] mb-4" style={{ color: '#666' }}>{fase}</div>
-            <div className="flex justify-center gap-1.5">
-              {[0,1,2].map(i => (
-                <div key={i} className="w-2 h-2 rounded-full"
-                  style={{ background: '#111', animation: `zipDot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-              ))}
-            </div>
+            <h3>Generando expediente</h3>
+            <p key={fase}>{fase}</p>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {modalCancelar && (
-        <div className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-
-            <div className="px-6 pt-6 pb-4">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
-                style={{ background: '#FEE2E2' }}>
-                🚫
-              </div>
-              <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
-                ¿Cancelar este expediente?
-              </div>
-              <div className="text-[13px] leading-relaxed mb-3" style={{ color: '#555' }}>
-                El expediente <strong style={{ color: '#111' }}>{ticket.numero}</strong> será marcado como cancelado.
-                Podrás seguir consultándolo pero ya no aparecerá en el flujo activo.
-              </div>
-              <div className="px-3 py-2.5 rounded-xl text-[12px]"
-                style={{ background: '#FEF3C7', color: '#92400E' }}>
-                ⚠️ Esta acción no elimina el expediente — solo lo marca como cancelado.
-              </div>
-            </div>
-
-            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
-
-            <div className="flex gap-3 px-6 py-4">
-              <button onClick={() => setModalCancelar(false)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-                style={{ background: '#F3F4F6', color: '#444' }}>
-                No, mantener
-              </button>
-              <button onClick={() => {
-                onCancelar()
-                setModalCancelar(false)
-              }}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-                style={{ background: '#991B1B', color: '#fff' }}>
-                Sí, cancelar
-              </button>
-            </div>
+      {mCancelar.abierto && (
+        <Modal saliendo={mCancelar.saliendo} onClose={mCancelar.cerrar}>
+          <div className={t.modalBody}>
+            <div className={`${t.modalIc} ${t.modalIcRed}`}><Ic n="ban" size={20} /></div>
+            <h3>¿Cancelar este expediente?</h3>
+            <p>El expediente <strong>{ticket.numero}</strong> quedará como cancelado. Podrás consultarlo, pero ya no aparecerá en el flujo activo.</p>
+            <div className={t.modalNote}>No se elimina nada: solo cambia su estado.</div>
           </div>
-        </div>
+          <div className={t.modalFoot}>
+            <button type="button" className={`${t.btn} ${t.btnGhost}`} onClick={mCancelar.cerrar}>No, mantener</button>
+            <button type="button" className={`${t.btn} ${t.btnSolidRed}`} disabled={saving}
+              onClick={async () => { mCancelar.cerrar(); await onCancelar() }}>
+              Sí, cancelar
+            </button>
+          </div>
+        </Modal>
       )}
 
-      {reactivando && (
-        <div className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-
-            <div className="px-6 pt-6 pb-6 flex flex-col items-center text-center gap-4">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-[32px]"
-                style={{ background: '#EAF3DE' }}>
-                ✅
-              </div>
-              <div>
-                <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>
-                  ¿Reactivar este expediente?
-                </div>
-                <div className="text-[13px]" style={{ color: '#9C9890' }}>
-                  El expediente <strong style={{ color: '#111' }}>{ticket.numero}</strong> volverá al estado <strong style={{ color: '#111' }}>Asignado</strong> y aparecerá en el flujo activo.
-                </div>
-              </div>
-
-              <div className="flex gap-3 w-full">
-                <button onClick={() => setReactivando(false)}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-                  style={{ background: '#F3F4F6', color: '#444' }}>
-                  Cancelar
-                </button>
-                <button onClick={async () => {
-                  // Mostrar progreso
-                  const btn = document.getElementById('btn-reactivar')
-                  if (btn) btn.textContent = 'Reactivando...'
-                  await onReactivar()
-                  setReactivando(false)
-                }}
-                  id="btn-reactivar"
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-                  style={{ background: '#3B6D11', color: '#fff' }}>
-                  Sí, reactivar
-                </button>
-              </div>
-            </div>
+      {mReactivar.abierto && (
+        <Modal saliendo={mReactivar.saliendo} onClose={reactivandoAhora ? undefined : mReactivar.cerrar}>
+          <div className={t.modalBody}>
+            <div className={t.modalIc}><Ic n="undo" size={20} /></div>
+            <h3>¿Reactivar este expediente?</h3>
+            <p>El expediente <strong>{ticket.numero}</strong> volverá a la etapa <strong>Asignado</strong> y aparecerá de nuevo en el tablero.</p>
           </div>
-        </div>
+          <div className={t.modalFoot}>
+            <button type="button" className={`${t.btn} ${t.btnGhost}`} onClick={mReactivar.cerrar} disabled={reactivandoAhora}>Cancelar</button>
+            <button type="button" className={`${t.btn} ${t.btnDark}`} disabled={reactivandoAhora}
+              onClick={async () => { setReactivandoAhora(true); try { await onReactivar() } finally { setReactivandoAhora(false); mReactivar.cerrar() } }}>
+              {reactivandoAhora ? 'Reactivando…' : 'Sí, reactivar'}
+            </button>
+          </div>
+        </Modal>
       )}
 
-      {modalCompletar && (
-      <div className="fixed inset-0 flex items-center justify-center z-50"
-        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-        <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
-          style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-
-          <div className="px-6 pt-6 pb-4">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 text-[28px]"
-              style={{ background: '#EAF3DE' }}>
-              ✅
-            </div>
-            <div className="text-[16px] font-bold mb-2" style={{ color: '#111' }}>
-              Completar expediente
-            </div>
-            <div className="text-[13px] mb-4" style={{ color: '#555' }}>
-              Agrega un comentario de cierre — quedará registrado en las observaciones del expediente.
-            </div>
+      {mCompletar.abierto && (
+        <Modal saliendo={mCompletar.saliendo} onClose={guardandoCierre ? undefined : mCompletar.cerrar} ancho={440}>
+          <div className={t.modalBody}>
+            <div className={t.modalIc}><Ic n="check" size={20} sw={2.4} /></div>
+            <h3>Completar expediente</h3>
+            <p>Escribe un comentario de cierre. Quedará en las observaciones del expediente.</p>
             <textarea
               autoFocus
+              className={t.textarea}
+              style={{ marginTop: 14 }}
+              rows={4}
               value={comentarioCierre}
               onChange={e => setComentarioCierre(e.target.value)}
-              placeholder="Ej: Escritura firmada y entregada al cliente. Trámite concluido exitosamente..."
-              rows={4}
-              className="w-full px-3 py-3 rounded-xl text-[13px] outline-none resize-none leading-relaxed"
-              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
+              placeholder="Ej. Escritura firmada y entregada al cliente."
             />
-            <div className="text-[11px] mt-1 text-right" style={{ color: '#9C9890' }}>
-              {comentarioCierre.length} caracteres
-            </div>
+            <div className={t.counter}>{comentarioCierre.length} caracteres</div>
           </div>
-
-          <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
-
-          <div className="flex gap-3 px-6 py-4">
-            <button onClick={() => { setModalCompletar(false); setComentarioCierre('') }}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-              style={{ background: '#F3F4F6', color: '#444' }}>
-              Cancelar
-            </button>
-            <button
+          <div className={t.modalFoot}>
+            <button type="button" className={`${t.btn} ${t.btnGhost}`} onClick={mCompletar.cerrar} disabled={guardandoCierre}>Cancelar</button>
+            <button type="button" className={`${t.btn} ${t.btnDark}`} disabled={!comentarioCierre.trim() || guardandoCierre}
               onClick={async () => {
                 setGuardandoCierre(true)
-                await onCompletar(comentarioCierre)
-                setGuardandoCierre(false)
-                setModalCompletar(false)
-                setComentarioCierre('')
-              }}
-              disabled={!comentarioCierre.trim() || guardandoCierre}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-              style={{
-                background: comentarioCierre.trim() && !guardandoCierre ? '#3B6D11' : '#F3F4F6',
-                color:      comentarioCierre.trim() && !guardandoCierre ? '#fff' : '#9CA3AF',
+                try { await onCompletar(comentarioCierre) } finally { setGuardandoCierre(false); mCompletar.cerrar() }
               }}>
-              {guardandoCierre ? 'Guardando...' : '✅ Completar'}
+              {guardandoCierre ? 'Guardando…' : 'Completar'}
             </button>
           </div>
-        </div>
-      </div>
-    )}
-      <style jsx>{`
-        @keyframes zipProgress { 0%{stroke-dashoffset:175} 50%{stroke-dashoffset:44} 100%{stroke-dashoffset:175} }
-        @keyframes zipDot { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-6px);opacity:1} }
-      `}</style>
-    </div>
+        </Modal>
+      )}
+    </aside>
   )
 }

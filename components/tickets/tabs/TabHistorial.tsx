@@ -1,97 +1,66 @@
-import { format } from 'date-fns'
+import { format, isToday, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
+import s from './tabs.module.css'
+import { Ic } from '../ticketUi'
 
 interface Props {
   eventos: any[]
 }
 
-const tipoConfig: Record<string, { color: string, bg: string, emoji: string }> = {
-  wa_enviado:       { color: '#0F6E56', bg: '#EAF3DE', emoji: '💬' },
-  folio_dba:        { color: '#B8820A', bg: '#FEF3C7', emoji: '📋' },
-  folio_escritura:  { color: '#B8820A', bg: '#FEF3C7', emoji: '📋' },
-  reasignacion:     { color: '#185FA5', bg: '#E6F1FB', emoji: '🔄' },
-  nota:             { color: '#534AB7', bg: '#EDE9FE', emoji: '📝' },
-  estado_cambio:    { color: '#534AB7', bg: '#EDE9FE', emoji: '⚡' },
+const TIPO: Record<string, { icono: string; tono?: 'dark' | 'red' }> = {
+  estado_cambio:        { icono: 'chevron', tono: 'dark' },
+  reasignacion:         { icono: 'undo' },
+  folio_dba:            { icono: 'folio', tono: 'dark' },
+  folio_escritura:      { icono: 'folio', tono: 'dark' },
+  doc_subido:           { icono: 'upload' },
+  validacion_documento: { icono: 'check', tono: 'dark' },
+  wa_enviado:           { icono: 'wa' },
+  nota:                 { icono: 'doc' },
+}
+
+function etiquetaDia(fecha: Date) {
+  if (isToday(fecha)) return 'Hoy'
+  if (isYesterday(fecha)) return 'Ayer'
+  return format(fecha, "d 'de' MMMM yyyy", { locale: es })
 }
 
 export default function TabHistorial({ eventos }: Props) {
-  const sorted = [...eventos].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  )
+  const ordenados = [...eventos].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  if (sorted.length === 0) {
-    return (
-      <div className="text-center py-8 bg-white rounded-2xl"
-        style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
-        <div className="text-[28px] mb-2">📋</div>
-        <div className="text-[13px] font-semibold mb-1" style={{ color: '#333' }}>Sin historial</div>
-        <div className="text-[12px]" style={{ color: '#9C9890' }}>Las acciones del expediente aparecerán aquí</div>
-      </div>
-    )
+  if (ordenados.length === 0) {
+    return <div className={s.wrap}><div className={s.empty}><b>Sin historial</b><span>Las acciones del expediente aparecerán aquí.</span></div></div>
   }
 
+  let diaAnterior = ''
   return (
-    <div className="relative">
-
-      {/* Línea vertical de timeline */}
-      <div className="absolute left-[19px] top-5 bottom-5 w-px"
-        style={{ background: 'rgba(0,0,0,0.06)' }} />
-
-      <div className="flex flex-col gap-3">
-        {sorted.map((ev: any, i) => {
-          const cfg     = tipoConfig[ev.tipo] || { color: '#6B7280', bg: '#F3F4F6', emoji: '📌' }
+    <div className={s.wrap}>
+      <div className={s.timeline}>
+        {ordenados.map((ev, i) => {
+          const fecha = new Date(ev.created_at)
+          const dia = etiquetaDia(fecha)
+          const mostrarDia = dia !== diaAnterior
+          diaAnterior = dia
+          const cancelado = /cancelad/i.test(ev.descripcion || '')
+          const cfg = TIPO[ev.tipo] || { icono: 'clock' }
+          const tono = cancelado ? 'red' : cfg.tono
           const usuario = ev.usuarios_sistema
-          const area    = usuario?.areas?.nombre
-
           return (
-            <div key={ev.id} className="flex gap-3 items-start relative">
-
-              {/* Icono del evento */}
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[16px] flex-shrink-0 relative z-10"
-                style={{ background: cfg.bg, border: `1px solid ${cfg.color}20` }}>
-                {cfg.emoji}
-              </div>
-
-              {/* Contenido */}
-              <div className="flex-1 bg-white rounded-2xl p-3.5 min-w-0"
-                style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-
-                {/* Descripción */}
-                <div className="text-[13px] font-medium mb-2" style={{ color: '#111' }}>
-                  {ev.descripcion}
-                </div>
-
-                {/* Footer — fecha + usuario */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-
-                  {/* Fecha */}
-                  <span className="text-[10.5px]" style={{ color: '#9C9890' }}>
-                    {format(new Date(ev.created_at), "d MMM yyyy 'a las' HH:mm", { locale: es })}
-                  </span>
-
-                  {/* Usuario */}
+            <div key={ev.id || i}>
+              {mostrarDia && <div className={s.dayTitle}>{dia}</div>}
+              <div className={s.event} style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}>
+                <span className={`${s.evDot} ${tono === 'dark' ? s.evDotDark : tono === 'red' ? s.evDotRed : ''}`}>
+                  <Ic n={cfg.icono} size={12} sw={2.2} />
+                </span>
+                <p>{ev.descripcion}</p>
+                <div className={s.evMeta}>
+                  <span>{format(fecha, 'HH:mm')}</span>
                   {usuario ? (
-                    <div className="flex items-center gap-2 px-2 py-1 rounded-lg"
-                      style={{ background: '#F7F7F5' }}>
-                      <div className="w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black text-white flex-shrink-0"
-                        style={{ background: usuario.avatar_color || '#666' }}>
-                        {usuario.avatar_letras || '??'}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-semibold leading-tight" style={{ color: '#333' }}>
-                          {usuario.nombre}
-                        </div>
-                        <div className="text-[10px] leading-tight" style={{ color: '#9C9890' }}>
-                          {usuario.email}
-                          {area && ` · ${area}`}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-[10.5px] px-2 py-1 rounded-lg"
-                      style={{ background: '#F7F7F5', color: '#9C9890' }}>
-                      Sistema
+                    <span className={s.who} title={usuario.email}>
+                      <span className={s.whoAv}>{usuario.avatar_letras || (usuario.nombre || '?').slice(0, 2).toUpperCase()}</span>
+                      {usuario.nombre}{usuario.areas?.nombre ? ` · ${usuario.areas.nombre}` : ''}
                     </span>
+                  ) : (
+                    <span className={s.who}><span className={s.whoAv} style={{ background: '#a3a3a3' }}>S</span>Sistema</span>
                   )}
                 </div>
               </div>

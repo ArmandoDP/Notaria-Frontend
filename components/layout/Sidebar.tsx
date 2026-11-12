@@ -65,7 +65,9 @@ const ROL_LABEL: Record<string, string> = {
   asistente:        'Asistente',
 }
 
-const ORO = '#F0C040'
+const BLANCO = '#ffffff'
+const ROJO = '#b42318'
+const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif'
 const RIEL = 64
 const ABIERTO = 256
 
@@ -146,12 +148,24 @@ export default function Sidebar() {
 
   async function crearTramite() {
     verificarAcceso('crear nuevos trámites', async () => {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/nuevo`, { method: 'POST' })
-      if (res.ok) {
+      const api = process.env.NEXT_PUBLIC_API_URL
+      if (!api) {
+        alert('Falta configurar NEXT_PUBLIC_API_URL en el frontend.')
+        return
+      }
+      try {
+        const res = await fetch(`${api}/api/tramites/nuevo`, { method: 'POST' })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          alert(`No se pudo crear el trámite: ${err.detail || `error ${res.status}`}`)
+          return
+        }
         const nuevo = await res.json()
         setTramites(prev => [...prev, nuevo])
         setTramitesExpanded(true)
         window.location.href = `/tramites/${nuevo.id}`
+      } catch {
+        alert('No hay conexión con el servidor. Revisa que el backend esté funcionando e intenta de nuevo.')
       }
     })
   }
@@ -173,8 +187,8 @@ export default function Sidebar() {
   }
   const estiloFila = (activo: boolean): React.CSSProperties => ({
     ...filaBase,
-    background: activo ? 'rgba(240,192,64,0.14)' : 'transparent',
-    color: activo ? ORO : 'rgba(255,255,255,0.62)',
+    background: activo ? 'rgba(255,255,255,0.1)' : 'transparent',
+    color: activo ? BLANCO : 'rgba(255,255,255,0.55)',
     fontWeight: activo ? 600 : 500,
   })
   const cajaIcono: React.CSSProperties = {
@@ -184,16 +198,16 @@ export default function Sidebar() {
     fontSize: 13, opacity: abierto ? 1 : 0, transition: 'opacity .15s', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, textAlign: 'left',
   }
   const indicador = (activo: boolean) =>
-    activo ? <span style={{ position: 'absolute', left: -10, top: 12, bottom: 12, width: 3, borderRadius: 3, background: ORO }} /> : null
+    activo ? <span style={{ position: 'absolute', left: -10, top: 12, bottom: 12, width: 3, borderRadius: 3, background: BLANCO }} /> : null
 
   const tituloSeccion = (texto: string) => (
     <div style={{ height: 28, display: 'flex', alignItems: 'center', padding: '0 12px', marginTop: 10 }}>
       {abierto ? (
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.6, color: 'rgba(255,255,255,0.32)', whiteSpace: 'nowrap' }}>
           {texto.toUpperCase()}
         </span>
       ) : (
-        <span style={{ width: 20, height: 1, background: 'rgba(255,255,255,0.12)' }} />
+        <span style={{ width: 20, height: 1, background: 'rgba(255,255,255,0.14)' }} />
       )}
     </div>
   )
@@ -208,10 +222,10 @@ export default function Sidebar() {
           top: 8, bottom: 8, left: 8,
           width: abierto ? ABIERTO : RIEL,
           zIndex: 50,
-          background: '#0C0C10',
-          borderRadius: 18,
+          background: '#111111',
+          borderRadius: 14,
           padding: '12px 10px',
-          boxShadow: abierto ? '0 16px 48px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0,0,0,0.16)',
+          boxShadow: abierto ? '0 18px 48px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.08)',
           transition: 'width .2s ease, box-shadow .2s ease',
           overflow: 'hidden',
         }}
@@ -220,13 +234,12 @@ export default function Sidebar() {
         <a href="/" style={{ ...filaBase, height: 48, marginBottom: 6, color: '#fff' }}>
           <span style={cajaIcono}>
             <span style={{
-              width: 38, height: 38, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 900, color: '#000',
-              background: 'linear-gradient(145deg, #B8820A, #F0C040)', boxShadow: '0 4px 12px rgba(184,130,10,0.4)',
+              width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: SERIF, fontSize: 15, fontWeight: 600, color: '#111', background: BLANCO,
             }}>N3</span>
           </span>
           <span style={{ ...etiqueta, lineHeight: 1.2 }}>
-            <b style={{ display: 'block', fontSize: 13 }}>Notaría No. 3</b>
+            <b style={{ display: 'block', fontFamily: SERIF, fontSize: 15, fontWeight: 600 }}>Notaría No. 3</b>
             <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>Celaya, Guanajuato</span>
           </span>
         </a>
@@ -246,16 +259,16 @@ export default function Sidebar() {
                       {badge > 0 && !abierto && (
                         <span style={{
                           position: 'absolute', top: 6, right: 4, minWidth: 17, height: 17, borderRadius: 999, padding: '0 4px',
-                          background: '#21c063', color: '#fff', fontSize: 9.5, fontWeight: 800,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0C0C10',
+                          background: ROJO, color: '#fff', fontSize: 9.5, fontWeight: 700,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #111111',
                         }}>{badge > 99 ? '99+' : badge}</span>
                       )}
                     </span>
                     <span style={etiqueta}>{item.label}</span>
                     {badge > 0 && abierto && (
                       <span style={{
-                        marginRight: 10, minWidth: 22, height: 20, borderRadius: 999, padding: '0 6px', background: '#21c063',
-                        color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        marginRight: 10, minWidth: 22, height: 20, borderRadius: 999, padding: '0 6px', background: ROJO,
+                        color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>{badge > 99 ? '99+' : badge}</span>
                     )}
                   </a>
@@ -345,10 +358,10 @@ export default function Sidebar() {
         <a href="/notaria-ai" style={{ ...estiloFila(esActivo('/notaria-ai')), marginTop: 8 }} title={abierto ? undefined : 'Notaría AI'}>
           <span style={cajaIcono}>
             <span style={{
-              width: 36, height: 36, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-              background: 'linear-gradient(135deg, #7c5cff, #e05aa8)', boxShadow: '0 4px 14px rgba(160,90,255,0.4)',
+              width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+              border: '1px solid rgba(255,255,255,0.22)',
             }}>
-              <Icono nombre="ai" size={18} />
+              <Icono nombre="ai" size={17} />
             </span>
           </span>
           <span style={{ ...etiqueta, lineHeight: 1.2 }}>
@@ -365,8 +378,8 @@ export default function Sidebar() {
         >
           <span style={cajaIcono}>
             <span style={{
-              width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 900, color: '#000', background: 'linear-gradient(145deg, #B8820A, #F0C040)',
+              width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700, color: '#111', background: BLANCO,
             }}>{usuario?.letras || 'US'}</span>
           </span>
           <span style={{ ...etiqueta, lineHeight: 1.25 }}>
@@ -390,13 +403,17 @@ export default function Sidebar() {
           peligroso
           onCancel={() => setModalEliminar(null)}
           onConfirm={async () => {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/${modalEliminar.id}`, { method: 'DELETE' })
-            if (res.ok) {
-              setTramites(prev => prev.filter(x => x.id !== modalEliminar.id))
-              if (activeTramiteId === modalEliminar.id) window.location.href = '/'
-            } else {
-              const err = await res.json()
-              alert(`❌ ${err.detail}`)
+            try {
+              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/${modalEliminar.id}`, { method: 'DELETE' })
+              if (res.ok) {
+                setTramites(prev => prev.filter(x => x.id !== modalEliminar.id))
+                if (activeTramiteId === modalEliminar.id) window.location.href = '/'
+              } else {
+                const err = await res.json().catch(() => ({}))
+                alert(`No se pudo eliminar: ${err.detail || `error ${res.status}`}`)
+              }
+            } catch {
+              alert('No hay conexión con el servidor. Revisa que el backend esté funcionando e intenta de nuevo.')
             }
             setModalEliminar(null)
           }}
@@ -405,24 +422,24 @@ export default function Sidebar() {
 
       {modalLogout && (
         <div className="fixed inset-0 flex items-center justify-center z-[60]"
-          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
+          style={{ background: 'rgba(17,17,17,0.45)', backdropFilter: 'blur(4px)' }}
           onClick={() => setModalLogout(false)}>
-          <div className="rounded-2xl w-full max-w-xs mx-4 overflow-hidden"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}
+          <div className="w-full max-w-xs mx-4 overflow-hidden"
+            style={{ background: '#fff', borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}
             onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-4">
-              <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>¿Cerrar sesión?</div>
-              <div className="text-[13px]" style={{ color: '#9C9890' }}>
+              <div className="text-[18px] mb-1" style={{ color: '#111', fontFamily: SERIF, fontWeight: 600 }}>¿Cerrar sesión?</div>
+              <div className="text-[13px]" style={{ color: '#6b6b6b' }}>
                 Se cerrará tu sesión en este dispositivo. Puedes volver a entrar con tu correo.
               </div>
             </div>
             <div className="flex gap-3 px-6 py-4" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
               <button onClick={() => setModalLogout(false)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-                style={{ background: '#F3F4F6', color: '#444' }}>Cancelar</button>
+                className="flex-1 py-2.5 text-[13px] font-semibold cursor-pointer border-none"
+                style={{ background: '#f1f1ef', color: '#3a3a3a', borderRadius: 8 }}>Cancelar</button>
               <button onClick={handleLogout}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-                style={{ background: '#111', color: '#fff' }}>Cerrar sesión</button>
+                className="flex-1 py-2.5 text-[13px] font-semibold cursor-pointer border-none"
+                style={{ background: '#111', color: '#fff', borderRadius: 8 }}>Cerrar sesión</button>
             </div>
           </div>
         </div>

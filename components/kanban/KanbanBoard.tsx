@@ -34,13 +34,13 @@ function inicialesPersona(nombre?: string) {
 }
 const nombreColumna = (id: string) => COLUMNAS.find(c => c.id === id)?.label || id
 
-const ESTATUS_OBS: Record<string, { dot: string; bg: string; label: string; prioridad: number }> = {
-  demorado:   { dot: '#E24B4A', bg: 'rgba(226,75,74,0.1)',   label: 'Demorado',   prioridad: 1 },
-  pendiente:  { dot: '#D97706', bg: 'rgba(245,158,11,0.12)', label: 'Pendiente',  prioridad: 2 },
-  no_pagado:  { dot: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',  label: 'No pagado',  prioridad: 3 },
-  en_proceso: { dot: '#B48A06', bg: 'rgba(234,179,8,0.14)',  label: 'En proceso', prioridad: 4 },
-  ok:         { dot: '#10B981', bg: 'rgba(16,185,129,0.1)',  label: 'OK',         prioridad: 5 },
-  pagado:     { dot: '#3B82F6', bg: 'rgba(59,130,246,0.1)',  label: 'Pagado',     prioridad: 5 },
+const ESTATUS_OBS: Record<string, { tono: 'rojo' | 'negro' | 'gris'; label: string; prioridad: number }> = {
+  demorado:   { tono: 'rojo',  label: 'Demorado',   prioridad: 1 },
+  pendiente:  { tono: 'negro', label: 'Pendiente',  prioridad: 2 },
+  no_pagado:  { tono: 'gris',  label: 'No pagado',  prioridad: 3 },
+  en_proceso: { tono: 'gris',  label: 'En proceso', prioridad: 4 },
+  ok:         { tono: 'gris',  label: 'OK',         prioridad: 5 },
+  pagado:     { tono: 'gris',  label: 'Pagado',     prioridad: 5 },
 }
 
 const POR_PAGINA = 40
@@ -115,6 +115,10 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
   const [sobre,       setSobre]       = useState<string | null>(null)
   const [guardando,   setGuardando]   = useState<string[]>([])
   const [confirmar,   setConfirmar]   = useState<{ ticket: any; destino: string } | null>(null)
+  const [moverMenu,   setMoverMenu]   = useState<any | null>(null)
+  const [etapaVisible, setEtapaVisible] = useState(COLUMNAS[0].id)
+  const columnasRef = useRef<HTMLDivElement>(null)
+  const refsCol = useRef<Record<string, HTMLElement | null>>({})
   const [aviso,       setAviso]       = useState<{ texto: string; error?: boolean } | null>(null)
   const avisoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -170,6 +174,27 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
     if (!ticket || ticket.estado === destino || guardando.includes(ticket.id)) return
     if (FINALES.includes(destino)) setConfirmar({ ticket, destino })
     else moverTicket(ticket, destino)
+  }
+
+  // Pestañas de etapas: saltar a una columna y saber cuál se está viendo
+  function irAEtapa(id: string) {
+    const el = refsCol.current[id]
+    const cont = columnasRef.current
+    if (el && cont) cont.scrollTo({ left: el.offsetLeft - cont.offsetLeft, behavior: 'smooth' })
+    setEtapaVisible(id)
+  }
+  function alDesplazarColumnas() {
+    const cont = columnasRef.current
+    if (!cont) return
+    let mejor = COLUMNAS[0].id
+    let distancia = Infinity
+    for (const c of COLUMNAS) {
+      const el = refsCol.current[c.id]
+      if (!el) continue
+      const d = Math.abs(el.offsetLeft - cont.offsetLeft - cont.scrollLeft)
+      if (d < distancia) { distancia = d; mejor = c.id }
+    }
+    if (mejor !== etapaVisible) setEtapaVisible(mejor)
   }
 
   function soltarEn(destino: string, id: string) {
@@ -245,7 +270,7 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
       <div className={k.head}>
         <div className={k.title}>
           <h1>Tablero de solicitudes</h1>
-          <p><span className={k.live} />{filtrados.length} tickets · en tiempo real · arrastra una tarjeta para cambiarla de etapa</p>
+          <p><span className={k.live} />{filtrados.length} tickets · en tiempo real<span className={k.hideSm}> · arrastra una tarjeta para cambiarla de etapa</span></p>
         </div>
         <div className={k.tools}>
           <label className={k.search}>
@@ -272,27 +297,43 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
             <option value="ok">OK / Pagado</option>
             <option value="sin_obs">Sin observaciones</option>
           </select>
-          {hayFiltros && <button className={k.clear} onClick={limpiar}>Limpiar</button>}
-          <a href="/nueva" className={k.newBtn}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            Nueva solicitud
-          </a>
+          {hayFiltros && <button className={k.clear} onClick={limpiar}>Limpiar filtros</button>}
         </div>
+        <a href="/nueva" className={k.newBtn} title="Nueva solicitud">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+          <span>Nueva solicitud</span>
+        </a>
       </div>
 
       {/* Indicadores */}
       <div className={k.kpis}>
-        <Kpi label="Activos" valor={activos} sub="En proceso" color="#534AB7" delay={0} onClick={limpiar} />
-        <Kpi label="Vencidos" valor={vencidos} sub={vencidos ? 'Requieren atención' : 'Todo en tiempo'} color={vencidos ? '#E24B4A' : '#3B6D11'} delay={40}
+        <Kpi label="Activos" valor={activos} sub="En proceso" delay={0} onClick={limpiar} />
+        <Kpi label="Vencidos" valor={vencidos} sub={vencidos ? 'Requieren atención' : 'Todo en tiempo'} alerta={vencidos > 0} delay={40}
           activo={especial === 'vencidos'} onClick={() => cambiar(() => setEspecial(especial === 'vencidos' ? null : 'vencidos'))} />
-        <Kpi label="Sin folio" valor={sinFolio} sub="Sin folio asignado" color="#92650A" delay={80}
+        <Kpi label="Sin folio" valor={sinFolio} sub="Sin folio asignado" delay={80}
           activo={especial === 'sin_folio'} onClick={() => cambiar(() => setEspecial(especial === 'sin_folio' ? null : 'sin_folio'))} />
-        <Kpi label="Folios DBA" valor={foliosDBA} sub="En proceso" color="#854F0B" delay={120} />
-        <Kpi label="Escrituras" valor={escrituras} sub="En proceso" color="#0F6E56" delay={160} />
+        <Kpi label="Folios DBA" valor={foliosDBA} sub="En proceso" delay={120} />
+        <Kpi label="Escrituras" valor={escrituras} sub="En proceso" delay={160} />
+      </div>
+
+      {/* Pestañas de etapas (pantallas medianas y chicas) */}
+      <div className={k.stageTabs} role="tablist" aria-label="Etapas">
+        {COLUMNAS.map(col => (
+          <button
+            key={col.id}
+            role="tab"
+            aria-selected={etapaVisible === col.id}
+            className={`${k.stageTab} ${etapaVisible === col.id ? k.stageTabOn : ''}`}
+            onClick={() => irAEtapa(col.id)}
+          >
+            {col.label}
+            <b>{filtrados.filter(t => t.estado === col.id).length}</b>
+          </button>
+        ))}
       </div>
 
       {/* Columnas */}
-      <div className={k.columns}>
+      <div className={k.columns} ref={columnasRef} onScroll={alDesplazarColumnas}>
         {COLUMNAS.map((col, ci) => {
           const delCol = filtrados.filter(t => t.estado === col.id)
           const vencCol = delCol.filter(estaVencido).length
@@ -304,6 +345,7 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
           return (
             <section
               key={col.id}
+              ref={el => { refsCol.current[col.id] = el }}
               className={`${k.col} ${encima ? k.colDrop : ''}`}
               style={{ animationDelay: `${ci * 50}ms`, ['--col' as any]: col.color }}
               onDragOver={e => {
@@ -322,7 +364,7 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
               }}
             >
               <header className={k.stage}>
-                <span className={k.stageNum}>
+                <span className={`${k.stageNum} ${final ? k.stageFinal : ''}`}>
                   {paso > 0 ? paso : col.id === 'completado' ? (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
                   ) : (
@@ -360,6 +402,7 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
                     onDragStart={id => requestAnimationFrame(() => setArrastrando(id))}
                     onDragEnd={() => { setArrastrando(null); setSobre(null) }}
                     onSiguiente={SIGUIENTE[t.estado] ? () => pedirMover(t, SIGUIENTE[t.estado]) : undefined}
+                    onMover={() => setMoverMenu(t)}
                   />
                 ))}
                 {delCol.length > limite && (
@@ -382,8 +425,8 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
           <div className={k.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className={k.modalBody}>
               <div className={k.modalIc} style={{
-                background: confirmar.destino === 'cancelado' ? 'rgba(226,75,74,0.1)' : 'rgba(59,109,17,0.1)',
-                color: confirmar.destino === 'cancelado' ? '#E24B4A' : '#3B6D11',
+                background: confirmar.destino === 'cancelado' ? '#fdf1f0' : '#f1f1ef',
+                color: confirmar.destino === 'cancelado' ? '#b42318' : '#111',
               }}>
                 {confirmar.destino === 'cancelado' ? (
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
@@ -403,12 +446,32 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
               <button className={k.btnGhost} onClick={() => setConfirmar(null)}>No, dejarlo</button>
               <button
                 autoFocus
-                style={{ background: confirmar.destino === 'cancelado' ? '#E24B4A' : '#3B6D11', color: '#fff' }}
+                style={{ background: confirmar.destino === 'cancelado' ? '#b42318' : '#111', color: '#fff' }}
                 onClick={() => { const c = confirmar; setConfirmar(null); moverTicket(c.ticket, c.destino) }}
               >
                 {confirmar.destino === 'cancelado' ? 'Sí, cancelar' : 'Sí, completar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {moverMenu && (
+        <div className={k.overlay} onClick={() => setMoverMenu(null)}>
+          <div className={k.sheet} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+            <h3>Mover {moverMenu.numero}</h3>
+            <p>{moverMenu.tramites_config?.nombre || 'Trámite'} · ahora en {nombreColumna(moverMenu.estado)}</p>
+            {COLUMNAS.filter(c => c.id !== moverMenu.estado).map(c => {
+              const n = ['nuevo', 'asignado', 'folio_dba', 'escritura_dba'].indexOf(c.id) + 1
+              return (
+                <button key={c.id} className={k.sheetItem} onClick={() => { const t = moverMenu; setMoverMenu(null); pedirMover(t, c.id) }}>
+                  <span>{n > 0 ? n : c.id === 'completado' ? '✓' : '✕'}</span>
+                  {c.label}
+                  <small>{filtrados.filter(t => t.estado === c.id).length} tickets</small>
+                </button>
+              )
+            })}
+            <button className={k.sheetCancel} onClick={() => setMoverMenu(null)}>Cancelar</button>
           </div>
         </div>
       )}
@@ -422,21 +485,18 @@ export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props
   )
 }
 
-function Kpi({ label, valor, sub, color, delay, activo, onClick }: {
-  label: string; valor: number; sub: string; color: string; delay: number; activo?: boolean; onClick?: () => void
+function Kpi({ label, valor, sub, alerta, delay, activo, onClick }: {
+  label: string; valor: number; sub: string; alerta?: boolean; delay: number; activo?: boolean; onClick?: () => void
 }) {
   const n = useContador(valor)
   const contenido = (<><small>{label}</small><strong>{n}</strong><span>{sub}</span></>)
-  const style = { color, animationDelay: `${delay}ms` }
-  if (!onClick) return <div className={k.kpi} style={style}>{contenido}</div>
-  return (
-    <button className={`${k.kpi} ${activo ? k.kpiOn : ''}`} style={style} onClick={onClick} aria-pressed={!!activo}>
-      {contenido}
-    </button>
-  )
+  const clases = [k.kpi, alerta ? k.kpiAlert : '', activo ? k.kpiOn : ''].join(' ')
+  const style = { animationDelay: `${delay}ms` }
+  if (!onClick) return <div className={clases} style={style}>{contenido}</div>
+  return <button className={clases} style={style} onClick={onClick} aria-pressed={!!activo}>{contenido}</button>
 }
 
-function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guardando, onDragStart, onDragEnd, onSiguiente }: {
+function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guardando, onDragStart, onDragEnd, onSiguiente, onMover }: {
   ticket: any
   indice: number
   nuevo: boolean
@@ -446,6 +506,7 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
   onDragStart: (id: string) => void
   onDragEnd: () => void
   onSiguiente?: () => void
+  onMover: () => void
 }) {
   const cancelado  = ticket.estado === 'cancelado'
   const completado = ticket.estado === 'completado'
@@ -454,7 +515,6 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
   const area       = ticket.areas
   const cliente    = (ticket.partes || []).find((p: any) => p.nombre_completo)?.nombre_completo as string | undefined
   const obs        = estatusPrioritario(ticket.observaciones || [])
-  const colorTramite = tramite?.color_hex || '#8a8580'
 
   // Tiempo del plazo (SLA)
   const vence   = ticket.sla_vence_at ? new Date(ticket.sla_vence_at) : null
@@ -466,7 +526,7 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
   if (!vencido && vence && creado && vence > creado) {
     avance = Math.min(1, Math.max(0.03, (Date.now() - creado.getTime()) / (vence.getTime() - creado.getTime())))
   }
-  const colorBarra = vencido ? '#E24B4A' : pronto || avance > 0.75 ? '#D99A0B' : '#21A366'
+  const colorBarra = vencido ? '#b42318' : pronto || avance > 0.75 ? '#111111' : '#a3a3a3'
   const siguiente = onSiguiente ? COLUMNAS.find(c => c.id === SIGUIENTE[ticket.estado]) : null
 
   const clases = [
@@ -495,6 +555,12 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
         viewTransitionName: nombreTransicion ? `tk-${ticket.id}` : undefined,
       } as React.CSSProperties}
     >
+      {!guardando && (
+        <button className={k.moveBtn} onClick={e => { e.preventDefault(); e.stopPropagation(); onMover() }}>
+          Mover
+        </button>
+      )}
+
       {siguiente && !guardando && (
         <button
           className={k.next}
@@ -507,7 +573,7 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
       )}
 
       <div className={k.cHead}>
-        <span className={k.tile} style={{ background: colorTramite }}>{inicialesTramite(tramite?.nombre)}</span>
+        <span className={k.tile}>{inicialesTramite(tramite?.nombre)}</span>
         <div className={k.cTitle}>
           <div className={k.tramite}>{tramite?.nombre || 'Trámite'}</div>
           <span className={k.num}>{ticket.numero}{ticket.folio_dba ? ` · Folio ${ticket.folio_dba}` : ''}</span>
@@ -522,22 +588,19 @@ function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guar
       )}
 
       <div className={k.chips}>
-        <span className={k.chip} style={{ background: `${area?.color_hex || '#888'}17`, color: area?.color_hex || '#666' }}>
-          {area?.nombre || 'Sin área'}
-        </span>
+        <span className={k.chip}>{area?.nombre || 'Sin área'}</span>
         {!final && obs && (
-          <span className={`${k.chip} ${obs.prioridad <= 2 ? k.urgent : ''}`} style={{ background: obs.bg, color: obs.dot }} title="Observaciones">
+          <span
+            className={[k.chip, obs.tono === 'rojo' ? `${k.chipRed} ${k.urgent}` : obs.tono === 'negro' ? k.chipDark : ''].join(' ')}
+            title="Observaciones"
+          >
             <i />{obs.label}
           </span>
         )}
       </div>
 
       {final ? (
-        <span className={k.finalTag} style={completado
-          ? { background: 'rgba(59,109,17,0.12)', color: '#3B6D11' }
-          : { background: 'rgba(107,114,128,0.12)', color: '#6B7280' }}>
-          {completado ? '✓ Completado' : 'Cancelado'}
-        </span>
+        <span className={k.finalTag}>{completado ? '✓ Completado' : 'Cancelado'}</span>
       ) : vence && (
         <div className={`${k.time} ${vencido ? k.timeLate : pronto ? k.timeSoon : ''}`} title={`Vence: ${vence.toLocaleString('es-MX')}`}>
           <div className={k.timeRow}>
