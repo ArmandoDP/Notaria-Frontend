@@ -1,32 +1,36 @@
 'use client'
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import d from './dashboard.module.css'
 
 interface Props {
-  datos: { area: string, total: number }[]
+  datos: { area: string; total: number }[]
+  delay?: string
 }
 
-export default function GraficaAreas({ datos }: Props) {
+export default function GraficaAreas({ datos, delay = '' }: Props) {
+  const max = Math.max(1, ...datos.map(x => x.total))
   return (
-    <div className="bg-white rounded-2xl p-5"
-      style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      <div className="text-[13px] font-bold mb-1" style={{ color: '#111' }}>Tickets activos por área</div>
-      <div className="text-[11px] mb-4" style={{ color: '#9C9890' }}>Estados: nuevo, asignado, folio DBA</div>
-
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={datos} layout="vertical" margin={{ left: 8, right: 16 }}>
-          <XAxis type="number" tick={{ fontSize: 11 }} />
-          <YAxis type="category" dataKey="area" tick={{ fontSize: 10 }} width={90} />
-          <Tooltip
-            contentStyle={{ borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)', fontSize: '12px' }}
-          />
-          <Bar dataKey="total" radius={[0, 6, 6, 0]}>
-            {datos.map((_, i) => (
-              <Cell key={i} fill={`hsl(${220 + i * 18}, 60%, ${45 + i * 3}%)`} />
+    <section className={`${d.card} ${delay}`}>
+      <div className={d.cardHead}>
+        <div>
+          <h3>Carga por área</h3>
+          <p>Expedientes activos del periodo</p>
+        </div>
+      </div>
+      <div className={d.cardBody}>
+        {datos.length === 0 ? <div className={d.cardEmpty}>Sin expedientes activos</div> : (
+          <div className={d.bars}>
+            {datos.map((x, i) => (
+              <div key={x.area} className={d.barRow} style={{ animationDelay: `${0.15 + i * 0.05}s` }}>
+                <div className={d.barTop}><span>{x.area}</span><b>{x.total.toLocaleString('es-MX')}</b></div>
+                <div className={d.barTrack}>
+                  <i style={{ ['--w' as any]: `${(x.total / max) * 100}%`, background: i === 0 ? '#111' : '#6b6b6b', animationDelay: `${0.2 + i * 0.06}s` }} />
+                </div>
+              </div>
             ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

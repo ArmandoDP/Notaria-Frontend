@@ -1,74 +1,55 @@
 'use client'
 
-import { format, differenceInDays } from 'date-fns'
+import { format, differenceInCalendarDays, isPast } from 'date-fns'
 import { es } from 'date-fns/locale'
+import d from './dashboard.module.css'
 
 interface Props {
   tickets: any[]
+  total:   number
+  delay?:  string
+  onVerTodos?: () => void
 }
 
-export default function TablaUrgentes({ tickets }: Props) {
-  if (tickets.length === 0) return null
-
+export default function TablaUrgentes({ tickets, total, delay = '', onVerTodos }: Props) {
   return (
-    <div className="bg-white rounded-2xl overflow-hidden"
-      style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-
-      <div className="flex items-center gap-2 px-5 py-4"
-        style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-        <span className="text-[14px]">⚠️</span>
+    <section className={`${d.card} ${delay}`}>
+      <div className={`${d.cardHead} ${d.cardHeadLine}`}>
         <div>
-          <div className="text-[13px] font-bold" style={{ color: '#111' }}>SLA en riesgo</div>
-          <div className="text-[11px]" style={{ color: '#9C9890' }}>Vencen en los próximos 3 días</div>
+          <h3>Plazos en riesgo</h3>
+          <p>Vencidos o que vencen en los próximos 3 días</p>
         </div>
+        <span className={`${d.countBadge} ${total === 0 ? d.countBadgeOk : ''}`}>{total === 0 ? 'Todo en tiempo' : `${total} en riesgo`}</span>
       </div>
-
-      <div className="flex flex-col">
-        {tickets.map((t, i) => {
-          const diasRestantes = differenceInDays(new Date(t.sla_vence_at), new Date())
-          const vencido       = diasRestantes < 0
-          const cliente       = t.partes?.[0]?.nombre_completo || '—'
-
-          return (
-            <a key={t.id} href={`/tickets/${t.id}`}
-              className="flex items-center gap-3 px-5 py-3 no-underline transition-all"
-              style={{
-                borderBottom: i < tickets.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none',
-                background: 'transparent',
-              }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FFFBF0'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-
-              <div className="w-1.5 h-10 rounded-full flex-shrink-0"
-                style={{ background: vencido ? '#E24B4A' : diasRestantes <= 1 ? '#F0B429' : '#F0C040' }} />
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-bold font-mono" style={{ color: '#111' }}>
-                    {t.numero}
-                  </span>
-                  <span className="text-[10px] truncate" style={{ color: '#666' }}>
-                    {t.tramites_config?.nombre}
-                  </span>
+      {tickets.length === 0 ? <div className={d.cardEmpty}>Ningún expediente activo está por vencer.</div> : (
+        <div className={d.rows}>
+          {tickets.map((t, i) => {
+            const vence = new Date(t.sla_vence_at)
+            const vencido = isPast(vence)
+            const dias = differenceInCalendarDays(vence, new Date())
+            const cliente = t.partes?.find((p: any) => p.nombre_completo)?.nombre_completo || 'Sin cliente'
+            const texto = vencido ? `Vencido hace ${Math.max(1, -dias)} d` : dias === 0 ? 'Vence hoy' : dias === 1 ? 'Vence mañana' : `Vence en ${dias} d`
+            return (
+              <a key={t.id} href={`/tickets/${t.id}`} className={d.row} style={{ animationDelay: `${0.15 + i * 0.04}s` }}>
+                <span className={`${d.rowMark} ${vencido ? d.rowMarkRed : dias <= 1 ? d.rowMarkDark : ''}`} />
+                <div className={d.rowMain}>
+                  <b><small>{t.numero}</small>{t.tramites_config?.nombre}</b>
+                  <span>{cliente} · {t.areas?.nombre || 'Sin área'}</span>
                 </div>
-                <div className="text-[11px]" style={{ color: '#9C9890' }}>
-                  {cliente} · {t.areas?.nombre}
+                <div className={d.rowSide}>
+                  <b className={vencido ? d.textRed : ''}>{texto}</b>
+                  <span>{format(vence, "d 'de' MMM", { locale: es })}</span>
                 </div>
-              </div>
-
-              <div className="text-right flex-shrink-0">
-                <div className="text-[11px] font-bold"
-                  style={{ color: vencido ? '#E24B4A' : diasRestantes <= 1 ? '#F0B429' : '#854F0B' }}>
-                  {vencido ? `Vencido hace ${Math.abs(diasRestantes)}d` : diasRestantes === 0 ? 'Vence hoy' : `${diasRestantes}d restantes`}
-                </div>
-                <div className="text-[10px]" style={{ color: '#9C9890' }}>
-                  {format(new Date(t.sla_vence_at), "d MMM", { locale: es })}
-                </div>
-              </div>
-            </a>
-          )
-        })}
-      </div>
-    </div>
+              </a>
+            )
+          })}
+          {total > tickets.length && onVerTodos && (
+            <button type="button" className={d.row} style={{ border: 'none', background: 'none', font: 'inherit', cursor: 'pointer', justifyContent: 'center', fontSize: '.8rem', fontWeight: 700 }} onClick={onVerTodos}>
+              Ver los {total} expedientes en riesgo
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   )
 }

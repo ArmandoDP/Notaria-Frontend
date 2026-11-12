@@ -1,117 +1,110 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { format, isPast } from 'date-fns'
+import { es } from 'date-fns/locale'
+import d from './dashboard.module.css'
+import { ACTIVOS, Ic, estadoLabel } from './dashUtil'
+
+export type FiltroKPI =
+  | { tipo: 'periodo' }
+  | { tipo: 'estado'; estado: string }
+  | { tipo: 'riesgo' }
 
 interface Props {
-  titulo:  string
-  filtro:  { campo: string, valor: string } | { campo: 'hoy' }
-  onClose: () => void
+  titulo:       string
+  descripcion?: string
+  filtro:       FiltroKPI
+  desde:        string | null
+  onClose:      () => void
 }
 
-export default function ModalTicketsKPI({ titulo, filtro, onClose }: Props) {
-  const [tickets,  setTickets]  = useState<any[]>([])
+const LIMITE = 100
+
+export default function ModalTicketsKPI({ titulo, descripcion, filtro, desde, onClose }: Props) {
+  const supabase = useMemo(() => createClient(), [])
+  const [tickets, setTickets] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
   const [cargando, setCargando] = useState(true)
-  const supabase = createClient()
+  const [saliendo, setSaliendo] = useState(false)
+
+  function cerrar() {
+    setSaliendo(true)
+    setTimeout(onClose, 190)
+  }
 
   useEffect(() => {
-    async function cargar() {
-      let query = supabase
-        .from('tickets')
-        .select('id, numero, estado, created_at, sla_vence_at, tramites_config(nombre, color_hex), areas(nombre), partes(nombre_completo, rol)')
-        .order('created_at', { ascending: false })
-        .limit(20)
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && cerrar()
+    window.addEventListener('keydown', tecla)
+    return () => window.removeEventListener('keydown', tecla)
+  }, [])
 
-      if (filtro.campo === 'hoy') {
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-        query = query.gte('created_at', hoy.toISOString())
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      let q = supabase
+        .from('tickets')
+        .select('id, numero, estado, created_at, sla_vence_at, tramites_config(nombre), areas(nombre), partes(nombre_completo)', { count: 'exact' })
+
+      if (filtro.tipo === 'riesgo') {
+        q = q.in('estado', ACTIVOS)
+          .lte('sla_vence_at', new Date(Date.now() + 3 * 86400000).toISOString())
+          .order('sla_vence_at', { ascending: true })
       } else {
-        query = query.eq(filtro.campo, filtro.valor)
+        if (desde) q = q.gte('created_at', desde)
+        if (filtro.tipo === 'estado') q = q.eq('estado', filtro.estado)
+        q = q.order('created_at', { ascending: false })
       }
 
-      const { data } = await query
+      const { data, count } = await q.limit(LIMITE)
+      if (!vivo) return
       setTickets(data || [])
+      setTotal(count || 0)
       setCargando(false)
     }
     cargar()
+    return () => { vivo = false }
   }, [])
 
-  const ESTADO_LABEL: Record<string, { label: string, color: string, bg: string }> = {
-    nuevo:         { label: 'Nuevo',        color: '#185FA5', bg: '#E6F1FB' },
-    asignado:      { label: 'Asignado',     color: '#3B6D11', bg: '#EAF3DE' },
-    folio_dba:     { label: 'Folio DBA',    color: '#854F0B', bg: '#FEF3C7' },
-    escritura_dba: { label: 'Escritura',    color: '#0F6E56', bg: '#D1FAE5' },
-  }
-
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}
-      onClick={onClose}>
-
-      <div className="rounded-2xl w-full max-w-lg mx-4 overflow-hidden"
-        style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)', maxHeight: '80vh' }}
-        onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4"
-          style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-          <div className="text-[15px] font-bold" style={{ color: '#111' }}>{titulo}</div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer border-none text-[14px]"
-            style={{ background: '#F3F4F6', color: '#666' }}>
-            ✕
-          </button>
+    <div className={`${d.overlay} ${saliendo ? d.overlayOut : ''}`} onClick={cerrar}>
+      <div className={d.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className={d.modalHead}>
+          <div>
+            <h3>{titulo}</h3>
+            <p>{descripcion}{!cargando && ` · ${total.toLocaleString('es-MX')} expediente${total !== 1 ? 's' : ''}`}</p>
+          </div>
+          <button type="button" className={d.close} onClick={cerrar} aria-label="Cerrar"><Ic n="x" size={14} /></button>
         </div>
 
-        {/* Lista */}
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 64px)' }}>
+        <div className={d.modalList}>
           {cargando ? (
-            <div className="flex items-center justify-center py-12 text-[13px]" style={{ color: '#9C9890' }}>
-              Cargando...
-            </div>
+            <div className={d.cardEmpty}><div className={d.spin} /></div>
           ) : tickets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="text-[32px] mb-2">📭</div>
-              <div className="text-[13px]" style={{ color: '#9C9890' }}>Sin tickets</div>
-            </div>
+            <div className={d.cardEmpty}>No hay expedientes con este criterio.</div>
           ) : (
-            <div className="flex flex-col">
+            <div className={d.rows}>
               {tickets.map((t, i) => {
-                const cliente = t.partes?.[0]?.nombre_completo || '—'
-                const estado  = ESTADO_LABEL[t.estado] || { label: t.estado, color: '#666', bg: '#F3F4F6' }
+                const cliente = t.partes?.find((p: any) => p.nombre_completo)?.nombre_completo || 'Sin cliente'
+                const vence = t.sla_vence_at ? new Date(t.sla_vence_at) : null
+                const vencido = !!vence && isPast(vence) && ACTIVOS.includes(t.estado)
                 return (
-                  <a key={t.id} href={`/tickets/${t.id}`}
-                    className="flex items-center gap-3 px-6 py-3 no-underline transition-all"
-                    style={{
-                      borderBottom: i < tickets.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none',
-                      background: 'transparent',
-                    }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#F7F7F5'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-
-                    <div className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ background: t.tramites_config?.color_hex || '#666' }} />
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[12px] font-bold font-mono" style={{ color: '#111' }}>
-                          {t.numero}
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                          style={{ background: estado.bg, color: estado.color }}>
-                          {estado.label}
-                        </span>
-                      </div>
-                      <div className="text-[11px] truncate" style={{ color: '#666' }}>
-                        {t.tramites_config?.nombre} · {cliente}
-                      </div>
-                      <div className="text-[10px]" style={{ color: '#9C9890' }}>
-                        {t.areas?.nombre}
-                      </div>
+                  <a key={t.id} href={`/tickets/${t.id}`} className={d.row} style={{ animationDelay: `${Math.min(i, 14) * 0.03}s` }}>
+                    <span className={`${d.rowMark} ${vencido ? d.rowMarkRed : t.estado === 'nuevo' ? d.rowMarkDark : ''}`} />
+                    <div className={d.rowMain}>
+                      <b><small>{t.numero}</small>{t.tramites_config?.nombre}</b>
+                      <span>{cliente} · {t.areas?.nombre || 'Sin área'}</span>
                     </div>
-
-                    <div className="text-[11px] font-semibold flex-shrink-0" style={{ color: '#185FA5' }}>
-                      Ver →
+                    <div className={d.rowSide}>
+                      <span className={`${d.chip} ${vencido ? d.chipRed : t.estado === 'nuevo' ? d.chipDark : ''}`}>
+                        {vencido ? 'Vencido' : estadoLabel(t.estado)}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 3 }}>
+                        {filtro.tipo === 'riesgo' && vence
+                          ? `Vence ${format(vence, "d 'de' MMM", { locale: es })}`
+                          : format(new Date(t.created_at), "d 'de' MMM", { locale: es })}
+                      </span>
                     </div>
                   </a>
                 )
@@ -119,6 +112,13 @@ export default function ModalTicketsKPI({ titulo, filtro, onClose }: Props) {
             </div>
           )}
         </div>
+
+        {!cargando && total > tickets.length && (
+          <div className={d.modalFoot}>
+            <span>Mostrando {tickets.length} de {total.toLocaleString('es-MX')}</span>
+            <a href="/">Ver en el tablero de solicitudes</a>
+          </div>
+        )}
       </div>
     </div>
   )

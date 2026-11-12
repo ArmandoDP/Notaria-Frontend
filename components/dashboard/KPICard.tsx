@@ -1,52 +1,40 @@
 'use client'
 
+import d from './dashboard.module.css'
+import { Ic, useContador } from './dashUtil'
+
 interface Props {
-  titulo:    string
-  valor:     number
-  icono:     string
-  color:     string
+  titulo:     string
+  valor:      number
   subtitulo?: string
-  onClick?:  () => void
+  alerta?:    boolean
+  anterior?:  number | null
+  onClick?:   () => void
 }
 
-export default function KPICard({ titulo, valor, icono, color, subtitulo, onClick }: Props) {
+export default function KPICard({ titulo, valor, subtitulo, alerta, anterior, onClick }: Props) {
+  const n = useContador(valor)
+  let delta: { texto: string; sube: boolean } | null = null
+  if (anterior !== undefined && anterior !== null) {
+    if (anterior === 0) delta = valor > 0 ? { texto: 'nuevo', sube: true } : null
+    else {
+      const pct = Math.round(((valor - anterior) / anterior) * 100)
+      delta = { texto: `${pct > 0 ? '+' : ''}${pct}%`, sube: pct > 0 }
+    }
+  }
+
   return (
-    <button
-      onClick={onClick}
-      className="bg-white rounded-2xl p-5 text-left w-full transition-all"
-      style={{
-        border:     '1px solid rgba(0,0,0,0.06)',
-        boxShadow:  '0 1px 4px rgba(0,0,0,0.04)',
-        cursor:     onClick ? 'pointer' : 'default',
-        transform:  'translateY(0)',
-      }}
-      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)' }}
-      onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}>
-
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[18px]"
-          style={{ background: `${color}15` }}>
-          {icono}
-        </div>
-        {onClick && (
-          <span className="text-[10px] font-medium px-2 py-1 rounded-full"
-            style={{ background: `${color}10`, color }}>
-            Ver detalle →
-          </span>
-        )}
-      </div>
-
-      <div className="text-[32px] font-black mb-1" style={{ color: '#111', lineHeight: 1 }}>
-        {valor}
-      </div>
-      <div className="text-[12px] font-semibold" style={{ color: '#666' }}>
+    <button type="button" className={`${d.kpi} ${alerta ? d.kpiRed : ''}`} onClick={onClick}>
+      <small>
         {titulo}
-      </div>
-      {subtitulo && (
-        <div className="text-[11px] mt-1" style={{ color: '#9C9890' }}>
-          {subtitulo}
-        </div>
-      )}
+        {delta
+          ? <span className={`${d.delta} ${delta.sube ? d.deltaUp : ''}`} title="Contra el periodo anterior">
+              <Ic n={delta.sube ? 'up' : 'down'} size={10} sw={2.6} />{delta.texto}
+            </span>
+          : <span className={d.arrowGo}><Ic n="arrow" size={13} /></span>}
+      </small>
+      <strong>{n.toLocaleString('es-MX')}</strong>
+      {subtitulo && <span>{subtitulo}</span>}
     </button>
   )
 }

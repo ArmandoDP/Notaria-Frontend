@@ -1,52 +1,60 @@
 'use client'
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import d from './dashboard.module.css'
+import { ESTADOS, useContador } from './dashUtil'
 
 interface Props {
-  ticketsPorEstado: { estado: string, total: number }[]
+  ticketsPorEstado: { estado: string; total: number }[]
+  delay?: string
 }
 
-const COLORES: Record<string, string> = {
-  nuevo:         '#185FA5',
-  asignado:      '#3B6D11',
-  folio_dba:     '#854F0B',
-  escritura_dba: '#0F6E56',
-}
-
-const LABELS: Record<string, string> = {
-  nuevo:         'Nuevo',
-  asignado:      'Asignado',
-  folio_dba:     'Folio DBA',
-  escritura_dba: 'Escritura DBA',
-}
-
-export default function GraficaEstados({ ticketsPorEstado }: Props) {
+export default function GraficaEstados({ ticketsPorEstado, delay = '' }: Props) {
   const total = ticketsPorEstado.reduce((s, t) => s + t.total, 0)
+  const n = useContador(total)
+  const datos = ESTADOS
+    .map(e => ({ ...e, total: ticketsPorEstado.find(t => t.estado === e.id)?.total || 0 }))
+    .filter(e => e.total > 0)
 
   return (
-    <div className="bg-white rounded-2xl p-5"
-      style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      <div className="text-[13px] font-bold mb-1" style={{ color: '#111' }}>Tickets por estado</div>
-      <div className="text-[11px] mb-4" style={{ color: '#9C9890' }}>{total} activos en total</div>
-
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <Pie data={ticketsPorEstado} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-            dataKey="total" nameKey="estado" paddingAngle={3}>
-            {ticketsPorEstado.map((entry, i) => (
-              <Cell key={i} fill={COLORES[entry.estado] || '#9C9890'} />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value: any, name: any) => [value, LABELS[name] || name]}
-            contentStyle={{ borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)', fontSize: '12px' }}
-          />
-          <Legend
-            formatter={(value) => LABELS[value] || value}
-            wrapperStyle={{ fontSize: '11px' }}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    <section className={`${d.card} ${delay}`}>
+      <div className={d.cardHead}>
+        <div>
+          <h3>Por etapa</h3>
+          <p>Expedientes del periodo según su etapa actual</p>
+        </div>
+      </div>
+      <div className={d.cardBody}>
+        {total === 0 ? <div className={d.cardEmpty}>Sin expedientes en este periodo</div> : (
+          <>
+            <div className={d.donutWrap}>
+              <ResponsiveContainer width="100%" height={190}>
+                <PieChart>
+                  <Pie data={datos} dataKey="total" nameKey="label" innerRadius={62} outerRadius={84} paddingAngle={2}
+                    stroke="#fff" strokeWidth={2} startAngle={90} endAngle={-270}
+                    animationDuration={900} animationEasing="ease-out">
+                    {datos.map(e => <Cell key={e.id} fill={e.color} />)}
+                  </Pie>
+                  <Tooltip content={({ active, payload }: any) => active && payload?.length ? (
+                    <div className={d.tip}><b>{payload[0].value}</b><span>{payload[0].name}</span></div>
+                  ) : null} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className={d.donutCenter}><b>{n.toLocaleString('es-MX')}</b><span>Expedientes</span></div>
+            </div>
+            <div className={d.legend}>
+              {datos.map((e, i) => (
+                <div key={e.id} className={d.legendRow} style={{ animationDelay: `${0.2 + i * 0.05}s` }}>
+                  <i style={{ background: e.color, border: e.id === 'cancelado' ? '1px solid #d6d6d3' : undefined }} />
+                  <span>{e.label}</span>
+                  <b>{e.total.toLocaleString('es-MX')}</b>
+                  <em>{Math.round((e.total / total) * 100)}%</em>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   )
 }
