@@ -1,288 +1,552 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Ticket, Area, TramiteConfig } from '@/types/database'
-import { formatDistanceToNow, isPast } from 'date-fns'
+import { formatDistanceToNowStrict, differenceInHours } from 'date-fns'
 import { es } from 'date-fns/locale'
+import k from './kanban.module.css'
 
 const COLUMNAS = [
-  { id: 'nuevo',         label: 'Nuevo',         color: '#534AB7', bg: 'rgba(83,74,183,0.1)'   },
-  { id: 'asignado',      label: 'Asignado',       color: '#185FA5', bg: 'rgba(24,95,165,0.1)'   },
-  { id: 'folio_dba',     label: 'Folio DBA',      color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
-  { id: 'escritura_dba', label: 'Escritura DBA',  color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
-  { id: 'cancelado',     label: 'Cancelado',      color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
-  { id: 'completado',    label: 'Completado',     color: '#3B6D11', bg: 'rgba(59,109,17,0.1)' },
+  { id: 'nuevo',         label: 'Nuevo',         color: '#534AB7', bg: 'rgba(83,74,183,0.12)'   },
+  { id: 'asignado',      label: 'Asignado',      color: '#185FA5', bg: 'rgba(24,95,165,0.12)'   },
+  { id: 'folio_dba',     label: 'Folio DBA',     color: '#854F0B', bg: 'rgba(133,79,11,0.12)'   },
+  { id: 'escritura_dba', label: 'Escritura DBA', color: '#0F6E56', bg: 'rgba(15,110,86,0.12)'   },
+  { id: 'cancelado',     label: 'Cancelado',     color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
+  { id: 'completado',    label: 'Completado',    color: '#3B6D11', bg: 'rgba(59,109,17,0.12)'   },
 ]
+const FINALES = ['completado', 'cancelado']
+const SIGUIENTE: Record<string, string> = {
+  nuevo: 'asignado', asignado: 'folio_dba', folio_dba: 'escritura_dba', escritura_dba: 'completado',
+}
+const PALABRAS_MENORES = ['de', 'del', 'la', 'las', 'el', 'los', 'y', 'o', 'a', 'en', 'para', 'por', 'con']
 
-const ESTATUS_PRIORIDAD: Record<string, { dot: string, prioridad: number }> = {
-  demorado:   { dot: '#E24B4A', prioridad: 1 },
-  pendiente:  { dot: '#F59E0B', prioridad: 2 },
-  no_pagado:  { dot: '#8B5CF6', prioridad: 3 },
-  en_proceso: { dot: '#EAB308', prioridad: 4 },
-  ok:         { dot: '#10B981', prioridad: 5 },
-  pagado:     { dot: '#3B82F6', prioridad: 5 },
+function inicialesTramite(nombre?: string) {
+  const palabras = (nombre || 'Trámite').replace(/[^\p{L}\s]/gu, ' ').split(/\s+/)
+    .filter(p => p && !PALABRAS_MENORES.includes(p.toLowerCase()))
+  return ((palabras[0]?.[0] || 'T') + (palabras[1]?.[0] || '')).toUpperCase()
 }
 
-function getEstatusPrioritario(observaciones: any[]) {
-  if (!observaciones || observaciones.length === 0) return null
-  const sorted = [...observaciones].sort((a, b) => {
-    const pa = ESTATUS_PRIORIDAD[a.estatus]?.prioridad ?? 99
-    const pb = ESTATUS_PRIORIDAD[b.estatus]?.prioridad ?? 99
-    return pa - pb
-  })
-  return ESTATUS_PRIORIDAD[sorted[0].estatus] || null
+function inicialesPersona(nombre?: string) {
+  const p = (nombre || '').trim().split(/\s+/).filter(Boolean)
+  return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?'
 }
+const nombreColumna = (id: string) => COLUMNAS.find(c => c.id === id)?.label || id
+
+const ESTATUS_OBS: Record<string, { dot: string; bg: string; label: string; prioridad: number }> = {
+  demorado:   { dot: '#E24B4A', bg: 'rgba(226,75,74,0.1)',   label: 'Demorado',   prioridad: 1 },
+  pendiente:  { dot: '#D97706', bg: 'rgba(245,158,11,0.12)', label: 'Pendiente',  prioridad: 2 },
+  no_pagado:  { dot: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',  label: 'No pagado',  prioridad: 3 },
+  en_proceso: { dot: '#B48A06', bg: 'rgba(234,179,8,0.14)',  label: 'En proceso', prioridad: 4 },
+  ok:         { dot: '#10B981', bg: 'rgba(16,185,129,0.1)',  label: 'OK',         prioridad: 5 },
+  pagado:     { dot: '#3B82F6', bg: 'rgba(59,130,246,0.1)',  label: 'Pagado',     prioridad: 5 },
+}
+
+const POR_PAGINA = 40
+
+const SELECT_TICKET = '*, tramites_config(nombre, color_hex), areas(nombre, color_hex), partes(*), observaciones(estatus)'
+
+function estatusPrioritario(observaciones: any[]) {
+  if (!observaciones?.length) return null
+  const clave = [...observaciones]
+    .sort((a, b) => (ESTATUS_OBS[a.estatus]?.prioridad ?? 99) - (ESTATUS_OBS[b.estatus]?.prioridad ?? 99))[0]?.estatus
+  return ESTATUS_OBS[clave] ? { clave, ...ESTATUS_OBS[clave] } : null
+}
+
+function estaVencido(t: any) {
+  return !FINALES.includes(t.estado) && t.sla_vence_at && new Date(t.sla_vence_at).getTime() < Date.now()
+}
+
+// Cambios con animación (View Transitions en Chrome/Edge); en otros navegadores, cambio normal
+function conTransicion(fn: () => void) {
+  const doc = document as any
+  const reducir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (!doc.startViewTransition || reducir || document.hidden) { fn(); return }
+  doc.startViewTransition(() => flushSync(fn))
+}
+
+function useContador(valor: number) {
+  const [mostrado, setMostrado] = useState(valor)
+  const anterior = useRef(0)
+  useEffect(() => {
+    const de = anterior.current
+    anterior.current = valor
+    const reducir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reducir || document.hidden || de === valor) { setMostrado(valor); return }
+    const inicio = performance.now()
+    const duracion = 700
+    let raf = 0
+    const paso = () => {
+      const p = Math.min(1, Math.max(0, (performance.now() - inicio) / duracion))
+      setMostrado(Math.round(de + (valor - de) * (1 - Math.pow(1 - p, 3))))
+      if (p < 1) raf = requestAnimationFrame(paso)
+    }
+    raf = requestAnimationFrame(paso)
+    // Seguro: pase lo que pase, termina mostrando el valor real
+    const seguro = setTimeout(() => setMostrado(valor), duracion + 150)
+    return () => { cancelAnimationFrame(raf); clearTimeout(seguro); setMostrado(valor) }
+  }, [valor])
+  return mostrado
+}
+
+type Especial = 'vencidos' | 'sin_folio' | null
 
 interface Props {
   ticketsIniciales: Ticket[]
-  areas:            Area[]
-  tramites:         Pick<TramiteConfig, 'id' | 'nombre' | 'color_hex'>[]
+  areas: Area[]
+  tramites: Pick<TramiteConfig, 'id' | 'nombre' | 'color_hex'>[]
 }
 
 export default function KanbanBoard({ ticketsIniciales, areas, tramites }: Props) {
-  const [tickets,       setTickets]       = useState<Ticket[]>(ticketsIniciales)
-  const [filtroArea,    setFiltroArea]    = useState<string>('todas')
-  const [filtroTramite, setFiltroTramite] = useState<string>('todos')
-  const [filtroEstatus, setFiltroEstatus] = useState<string>('todos')
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
+  const [tickets,       setTickets]       = useState<any[]>(ticketsIniciales as any[])
+  const [filtroArea,    setFiltroArea]    = useState('todas')
+  const [filtroTramite, setFiltroTramite] = useState('todos')
+  const [filtroEstatus, setFiltroEstatus] = useState('todos')
+  const [especial,      setEspecial]      = useState<Especial>(null)
+  const [busqueda,      setBusqueda]      = useState('')
+  const [recientes,     setRecientes]     = useState<string[]>([])
+  const [limites,       setLimites]       = useState<Record<string, number>>({})
+  const [, setTick] = useState(0)
 
-  // Realtime
+  // Arrastrar y soltar
+  const [arrastrando, setArrastrando] = useState<string | null>(null)
+  const [sobre,       setSobre]       = useState<string | null>(null)
+  const [guardando,   setGuardando]   = useState<string[]>([])
+  const [confirmar,   setConfirmar]   = useState<{ ticket: any; destino: string } | null>(null)
+  const [aviso,       setAviso]       = useState<{ texto: string; error?: boolean } | null>(null)
+  const avisoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const ticketsRef = useRef(tickets)
+  useEffect(() => { ticketsRef.current = tickets }, [tickets])
+
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  function mostrarAviso(texto: string, error = false) {
+    if (avisoTimer.current) clearTimeout(avisoTimer.current)
+    setAviso({ texto, error })
+    avisoTimer.current = setTimeout(() => setAviso(null), error ? 5000 : 3000)
+  }
+
+  function marcarReciente(id: string) {
+    setRecientes(prev => [...prev, id])
+    setTimeout(() => setRecientes(prev => prev.filter(x => x !== id)), 3500)
+  }
+
+  // Tiempo real
   useEffect(() => {
     const channel = supabase
       .channel('kanban-tickets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' },
-        async (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const { data } = await supabase
-              .from('tickets')
-              .select('*, tramites_config(nombre, color_hex), areas(nombre, color_hex), partes(*), observaciones(estatus)')
-              .eq('id', payload.new.id).single()
-            if (data) setTickets(prev => [data as any, ...prev])
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          conTransicion(() => setTickets(prev => prev.filter(t => t.id !== payload.old.id)))
+          return
+        }
+        const { data } = await supabase.from('tickets').select(SELECT_TICKET).eq('id', payload.new.id).single()
+        if (!data) return
+        if (payload.eventType === 'INSERT') {
+          conTransicion(() => setTickets(prev => (prev.some(t => t.id === data.id) ? prev : [data, ...prev])))
+          marcarReciente(data.id)
+        } else {
+          const antes = ticketsRef.current.find(t => t.id === data.id)
+          if (antes && antes.estado !== data.estado) {
+            conTransicion(() => setTickets(prev => prev.map(t => (t.id === data.id ? data : t))))
+            marcarReciente(data.id)
+          } else {
+            setTickets(prev => prev.map(t => (t.id === data.id ? data : t)))
           }
-          if (payload.eventType === 'UPDATE') {
-            const { data } = await supabase
-              .from('tickets')
-              .select('*, tramites_config(nombre, color_hex), areas(nombre, color_hex), partes(*), observaciones(estatus)')
-              .eq('id', payload.new.id).single()
-            if (data) setTickets(prev => prev.map(t => t.id === payload.new.id ? data as any : t))
-          }
-          if (payload.eventType === 'DELETE') {
-            setTickets(prev => prev.filter(t => t.id !== (payload.old as any).id))
-          }
-        })
+        }
+      })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  // Filtros
-  const ticketsFiltrados = tickets.filter(t => {
-    if (filtroArea    !== 'todas' && (t as any).area_id    !== filtroArea)    return false
-    if (filtroTramite !== 'todos' && (t as any).tramite_id !== filtroTramite) return false
+  // ─── Mover ticket ───
+  function pedirMover(ticket: any, destino: string) {
+    if (!ticket || ticket.estado === destino || guardando.includes(ticket.id)) return
+    if (FINALES.includes(destino)) setConfirmar({ ticket, destino })
+    else moverTicket(ticket, destino)
+  }
+
+  function soltarEn(destino: string, id: string) {
+    setSobre(null); setArrastrando(null)
+    const ticket = ticketsRef.current.find(t => t.id === id)
+    if (!ticket || ticket.estado === destino || guardando.includes(id)) return
+    if (FINALES.includes(destino)) setConfirmar({ ticket, destino })
+    else moverTicket(ticket, destino)
+  }
+
+  async function moverTicket(ticket: any, destino: string) {
+    const previo = ticket.estado
+    conTransicion(() => setTickets(prev => prev.map(t => (t.id === ticket.id ? { ...t, estado: destino } : t))))
+    setGuardando(prev => [...prev, ticket.id])
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({ estado: destino })
+      .eq('id', ticket.id)
+      .select('id')
+
+    setGuardando(prev => prev.filter(x => x !== ticket.id))
+
+    if (error || !data?.length) {
+      conTransicion(() => setTickets(prev => prev.map(t => (t.id === ticket.id ? { ...t, estado: previo } : t))))
+      mostrarAviso(error ? `No se pudo mover ${ticket.numero}: ${error.message}` : `No tienes permiso para mover ${ticket.numero}`, true)
+      return
+    }
+    mostrarAviso(`${ticket.numero} se movió a ${nombreColumna(destino)}`)
+  }
+
+  // ─── Filtros ───
+  const q = busqueda.trim().toLowerCase()
+  const filtrados = tickets.filter(t => {
+    if (filtroArea !== 'todas' && t.area_id !== filtroArea) return false
+    if (filtroTramite !== 'todos' && t.tramite_id !== filtroTramite) return false
+    if (especial === 'vencidos' && !estaVencido(t)) return false
+    if (especial === 'sin_folio' && (t.folio_dba || FINALES.includes(t.estado))) return false
     if (filtroEstatus !== 'todos') {
-      const obs = (t as any).observaciones || []
-      if (filtroEstatus === 'sin_obs') return obs.length === 0
-      const p = getEstatusPrioritario(obs)
-      if (!p) return false
-      const prioridades: Record<string, number> = {
-        demorado: 1, pendiente: 2, no_pagado: 3, en_proceso: 4, ok: 5
-      }
-      if (p.prioridad !== prioridades[filtroEstatus]) return false
+      const obs = t.observaciones || []
+      if (filtroEstatus === 'sin_obs') { if (obs.length) return false }
+      else if (estatusPrioritario(obs)?.prioridad !== ESTATUS_OBS[filtroEstatus]?.prioridad) return false
+    }
+    if (q) {
+      const texto = [t.numero, t.folio_dba, t.tramites_config?.nombre, ...(t.partes || []).map((p: any) => p.nombre_completo)]
+        .filter(Boolean).join(' ').toLowerCase()
+      if (!texto.includes(q)) return false
     }
     return true
   })
 
-  const activos    = tickets.filter(t => (t as any).estado !== 'cancelado').length
-  const sinFolio   = tickets.filter(t => !(t as any).folio_dba).length
-  const foliosDBA  = tickets.filter(t => (t as any).estado === 'folio_dba').length
-  const escrituras = tickets.filter(t => (t as any).estado === 'escritura_dba').length
+  const hayFiltros = filtroArea !== 'todas' || filtroTramite !== 'todos' || filtroEstatus !== 'todos' || !!especial || !!q
+  const cambiar = (fn: () => void) => conTransicion(() => { fn(); setLimites({}) })
+  function limpiar() {
+    conTransicion(() => {
+      setFiltroArea('todas'); setFiltroTramite('todos'); setFiltroEstatus('todos'); setEspecial(null); setBusqueda('')
+    })
+  }
+
+  // ─── Indicadores ───
+  const activos    = tickets.filter(t => !FINALES.includes(t.estado)).length
+  const vencidos   = tickets.filter(estaVencido).length
+  const sinFolio   = tickets.filter(t => !t.folio_dba && !FINALES.includes(t.estado)).length
+  const foliosDBA  = tickets.filter(t => t.estado === 'folio_dba').length
+  const escrituras = tickets.filter(t => t.estado === 'escritura_dba').length
+
+  const usarNombres = filtrados.length <= 300
+  const ticketArrastrado = arrastrando ? tickets.find(t => t.id === arrastrando) : null
 
   return (
-    <div>
-      <style>{`
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.4; transform: scale(1.5); }
-        }
-      `}</style>
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        {[
-          { label: 'Activos',    val: activos,    sub: 'En sistema',         color: '#534AB7', bg: 'rgba(83,74,183,0.06)'  },
-          { label: 'Sin folio',  val: sinFolio,   sub: 'Sin folio asignado', color: '#92650A', bg: 'rgba(184,130,10,0.06)' },
-          { label: 'Folios DBA', val: foliosDBA,  sub: 'En proceso',         color: '#854F0B', bg: 'rgba(133,79,11,0.1)'   },
-          { label: 'Escrituras', val: escrituras, sub: 'En proceso',         color: '#0F6E56', bg: 'rgba(15,110,86,0.1)'   },
-        ].map(s => (
-          <div key={s.label}
-            className="rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5"
-            style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#9C9890' }}>{s.label}</div>
-            <div className="text-[28px] font-bold leading-none tracking-tight" style={{ color: s.color }}>{s.val}</div>
-            <div className="text-[11px] mt-1.5 font-medium" style={{ color: s.color, opacity: 0.7 }}>{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-[18px] font-bold tracking-tight" style={{ color: '#111' }}>Kanban de trabajo</h1>
-          <p className="text-[12px] mt-0.5" style={{ color: '#9C9890' }}>
-            {ticketsFiltrados.length} tickets · Actualización en tiempo real
-          </p>
+    <div className={k.board}>
+      {/* Encabezado */}
+      <div className={k.head}>
+        <div className={k.title}>
+          <h1>Tablero de solicitudes</h1>
+          <p><span className={k.live} />{filtrados.length} tickets · en tiempo real · arrastra una tarjeta para cambiarla de etapa</p>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {/* Filtro área */}
-          <select value={filtroArea} onChange={e => setFiltroArea(e.target.value)}
-            className="px-3 py-2 rounded-xl text-[12px] font-medium border-none outline-none cursor-pointer"
-            style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', color: '#444', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div className={k.tools}>
+          <label className={k.search}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar número, cliente o trámite" aria-label="Buscar" />
+          </label>
+          <select className={`${k.select} ${filtroArea !== 'todas' ? k.selectOn : ''}`} value={filtroArea}
+            onChange={e => { const v = e.target.value; cambiar(() => setFiltroArea(v)) }} aria-label="Área">
             <option value="todas">Todas las áreas</option>
             {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </select>
-
-          {/* Filtro trámite */}
-          <select value={filtroTramite} onChange={e => setFiltroTramite(e.target.value)}
-            className="px-3 py-2 rounded-xl text-[12px] font-medium border-none outline-none cursor-pointer"
-            style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', color: '#444', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <select className={`${k.select} ${filtroTramite !== 'todos' ? k.selectOn : ''}`} value={filtroTramite}
+            onChange={e => { const v = e.target.value; cambiar(() => setFiltroTramite(v)) }} aria-label="Trámite">
             <option value="todos">Todos los trámites</option>
             {tramites.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select>
-
-          {/* Filtro estatus observaciones */}
-          <select value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)}
-            className="px-3 py-2 rounded-xl text-[12px] font-medium border-none outline-none cursor-pointer"
-            style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.08)', color: '#444', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <select className={`${k.select} ${filtroEstatus !== 'todos' ? k.selectOn : ''}`} value={filtroEstatus}
+            onChange={e => { const v = e.target.value; cambiar(() => setFiltroEstatus(v)) }} aria-label="Estatus">
             <option value="todos">Todos los estatus</option>
-            <option value="demorado">🔴 Demorado</option>
-            <option value="pendiente">🟠 Pendiente</option>
-            <option value="no_pagado">🟣 No pagado</option>
-            <option value="en_proceso">🟡 En proceso</option>
-            <option value="ok">🟢 OK / Pagado</option>
-            <option value="sin_obs">⚪ Sin observaciones</option>
+            <option value="demorado">Demorado</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="no_pagado">No pagado</option>
+            <option value="en_proceso">En proceso</option>
+            <option value="ok">OK / Pagado</option>
+            <option value="sin_obs">Sin observaciones</option>
           </select>
-
-          {/* Botón nueva solicitud */}
-          <a href="/nueva"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12.5px] font-semibold text-white no-underline transition-all duration-200 hover:-translate-y-0.5"
-            style={{ background: '#111', boxShadow: '0 4px 14px rgba(0,0,0,0.2)' }}>
-            <span className="text-[14px]">+</span>
+          {hayFiltros && <button className={k.clear} onClick={limpiar}>Limpiar</button>}
+          <a href="/nueva" className={k.newBtn}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             Nueva solicitud
           </a>
         </div>
       </div>
 
-      {/* Kanban */}
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {COLUMNAS.map(col => {
-          const colTickets = ticketsFiltrados.filter(t => (t as any).estado === col.id)
+      {/* Indicadores */}
+      <div className={k.kpis}>
+        <Kpi label="Activos" valor={activos} sub="En proceso" color="#534AB7" delay={0} onClick={limpiar} />
+        <Kpi label="Vencidos" valor={vencidos} sub={vencidos ? 'Requieren atención' : 'Todo en tiempo'} color={vencidos ? '#E24B4A' : '#3B6D11'} delay={40}
+          activo={especial === 'vencidos'} onClick={() => cambiar(() => setEspecial(especial === 'vencidos' ? null : 'vencidos'))} />
+        <Kpi label="Sin folio" valor={sinFolio} sub="Sin folio asignado" color="#92650A" delay={80}
+          activo={especial === 'sin_folio'} onClick={() => cambiar(() => setEspecial(especial === 'sin_folio' ? null : 'sin_folio'))} />
+        <Kpi label="Folios DBA" valor={foliosDBA} sub="En proceso" color="#854F0B" delay={120} />
+        <Kpi label="Escrituras" valor={escrituras} sub="En proceso" color="#0F6E56" delay={160} />
+      </div>
+
+      {/* Columnas */}
+      <div className={k.columns}>
+        {COLUMNAS.map((col, ci) => {
+          const delCol = filtrados.filter(t => t.estado === col.id)
+          const vencCol = delCol.filter(estaVencido).length
+          const final = FINALES.includes(col.id)
+          const paso = ['nuevo', 'asignado', 'folio_dba', 'escritura_dba'].indexOf(col.id) + 1
+          const esDestino = !!ticketArrastrado && ticketArrastrado.estado !== col.id
+          const encima = sobre === col.id && esDestino
+          const limite = limites[col.id] || POR_PAGINA
           return (
-            <div key={col.id} className="flex-shrink-0 w-[200px]">
-              <div className="flex items-center justify-between px-3 py-2.5 rounded-t-2xl mb-0.5"
-                style={{ background: 'rgba(255,255,255,0.7)' }}>
-                <span className="text-[11.5px] font-bold" style={{ color: '#333' }}>{col.label}</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: col.bg, color: col.color }}>
-                  {colTickets.length}
+            <section
+              key={col.id}
+              className={`${k.col} ${encima ? k.colDrop : ''}`}
+              style={{ animationDelay: `${ci * 50}ms`, ['--col' as any]: col.color }}
+              onDragOver={e => {
+                if (!esDestino) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (sobre !== col.id) setSobre(col.id)
+              }}
+              onDragLeave={e => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setSobre(x => (x === col.id ? null : x))
+              }}
+              onDrop={e => {
+                e.preventDefault()
+                const id = e.dataTransfer.getData('text/plain')
+                if (id) soltarEn(col.id, id)
+              }}
+            >
+              <header className={k.stage}>
+                <span className={k.stageNum}>
+                  {paso > 0 ? paso : col.id === 'completado' ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  )}
                 </span>
-              </div>
-              <div className="flex flex-col gap-2 p-2 rounded-b-2xl rounded-tr-2xl min-h-[120px]"
-                style={{ background: 'rgba(0,0,0,0.03)' }}>
-                {colTickets.length === 0 && (
-                  <div className="text-center py-6 text-[11px]" style={{ color: 'rgba(0,0,0,0.2)' }}>Sin tickets</div>
+                <div className={k.stageText}>
+                  <b>{col.label}</b>
+                  <small>
+                    {final ? (col.id === 'completado' ? 'Trámites terminados' : 'No continuaron')
+                      : vencCol ? <><em>{vencCol} vencido{vencCol !== 1 ? 's' : ''}</em> · {delCol.length - vencCol} en tiempo</> : 'Todo en tiempo'}
+                  </small>
+                </div>
+                <span className={k.stageCount}>{delCol.length}</span>
+                {paso > 0 && paso < 4 && (
+                  <span className={k.arrow} aria-hidden>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+                  </span>
                 )}
-                {colTickets.map(ticket => (
-                  <TicketCard key={ticket.id} ticket={ticket} />
+              </header>
+
+              {encima && <div className={k.dropHint}>Soltar para mover a {col.label}</div>}
+
+              <div className={k.colBody}>
+                {delCol.length === 0 && !encima && <div className={k.colEmpty}>Sin tickets en esta etapa</div>}
+                {delCol.slice(0, limite).map((t, i) => (
+                  <TicketCard
+                    key={t.id}
+                    ticket={t}
+                    indice={i}
+                    nuevo={recientes.includes(t.id)}
+                    nombreTransicion={usarNombres && arrastrando !== t.id}
+                    arrastrando={arrastrando === t.id}
+                    guardando={guardando.includes(t.id)}
+                    onDragStart={id => requestAnimationFrame(() => setArrastrando(id))}
+                    onDragEnd={() => { setArrastrando(null); setSobre(null) }}
+                    onSiguiente={SIGUIENTE[t.estado] ? () => pedirMover(t, SIGUIENTE[t.estado]) : undefined}
+                  />
                 ))}
+                {delCol.length > limite && (
+                  <button
+                    className={k.more}
+                    onClick={() => setLimites(l => ({ ...l, [col.id]: limite + POR_PAGINA }))}
+                  >
+                    Ver {Math.min(POR_PAGINA, delCol.length - limite)} más · quedan {delCol.length - limite}
+                  </button>
+                )}
               </div>
-            </div>
+            </section>
           )
         })}
       </div>
+
+      {/* Confirmación para Cancelado / Completado */}
+      {confirmar && (
+        <div className={k.overlay} onClick={() => setConfirmar(null)}>
+          <div className={k.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className={k.modalBody}>
+              <div className={k.modalIc} style={{
+                background: confirmar.destino === 'cancelado' ? 'rgba(226,75,74,0.1)' : 'rgba(59,109,17,0.1)',
+                color: confirmar.destino === 'cancelado' ? '#E24B4A' : '#3B6D11',
+              }}>
+                {confirmar.destino === 'cancelado' ? (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
+                ) : (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                )}
+              </div>
+              <b>{confirmar.destino === 'cancelado' ? '¿Cancelar este trámite?' : '¿Marcar como completado?'}</b>
+              <p>
+                {confirmar.ticket.numero} · {confirmar.ticket.tramites_config?.nombre || 'Trámite'}
+                {(confirmar.ticket.partes || []).find((p: any) => p.nombre_completo)?.nombre_completo
+                  ? ` de ${(confirmar.ticket.partes || []).find((p: any) => p.nombre_completo).nombre_completo}` : ''}
+                {' '}pasará a <strong>{nombreColumna(confirmar.destino)}</strong>.
+              </p>
+            </div>
+            <div className={k.modalFoot}>
+              <button className={k.btnGhost} onClick={() => setConfirmar(null)}>No, dejarlo</button>
+              <button
+                autoFocus
+                style={{ background: confirmar.destino === 'cancelado' ? '#E24B4A' : '#3B6D11', color: '#fff' }}
+                onClick={() => { const c = confirmar; setConfirmar(null); moverTicket(c.ticket, c.destino) }}
+              >
+                {confirmar.destino === 'cancelado' ? 'Sí, cancelar' : 'Sí, completar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aviso && (
+        <div className={`${k.toast} ${aviso.error ? k.toastError : ''}`} role="status">
+          {aviso.error ? '⚠' : '✓'} {aviso.texto}
+        </div>
+      )}
     </div>
   )
 }
 
-function TicketCard({ ticket }: { ticket: Ticket }) {
-  const cancelado          = (ticket as any).estado === 'cancelado'
-  const completado         = (ticket as any).estado === 'completado'
-  const vencido            = !cancelado && isPast(new Date(ticket.sla_vence_at))
-  const tramite            = (ticket as any).tramites_config
-  const area               = (ticket as any).areas
-  const partes             = ((ticket as any).partes as any[]) || []
-  const observaciones      = ((ticket as any).observaciones as any[]) || []
-  const primero            = partes.find((p: any) => p.nombre_completo)?.nombre_completo
-  const slaLabel           = formatDistanceToNow(new Date(ticket.sla_vence_at), { locale: es, addSuffix: true })
-  const estatusPrioritario = getEstatusPrioritario(observaciones)
+function Kpi({ label, valor, sub, color, delay, activo, onClick }: {
+  label: string; valor: number; sub: string; color: string; delay: number; activo?: boolean; onClick?: () => void
+}) {
+  const n = useContador(valor)
+  const contenido = (<><small>{label}</small><strong>{n}</strong><span>{sub}</span></>)
+  const style = { color, animationDelay: `${delay}ms` }
+  if (!onClick) return <div className={k.kpi} style={style}>{contenido}</div>
+  return (
+    <button className={`${k.kpi} ${activo ? k.kpiOn : ''}`} style={style} onClick={onClick} aria-pressed={!!activo}>
+      {contenido}
+    </button>
+  )
+}
+
+function TicketCard({ ticket, indice, nuevo, nombreTransicion, arrastrando, guardando, onDragStart, onDragEnd, onSiguiente }: {
+  ticket: any
+  indice: number
+  nuevo: boolean
+  nombreTransicion: boolean
+  arrastrando: boolean
+  guardando: boolean
+  onDragStart: (id: string) => void
+  onDragEnd: () => void
+  onSiguiente?: () => void
+}) {
+  const cancelado  = ticket.estado === 'cancelado'
+  const completado = ticket.estado === 'completado'
+  const final      = cancelado || completado
+  const tramite    = ticket.tramites_config
+  const area       = ticket.areas
+  const cliente    = (ticket.partes || []).find((p: any) => p.nombre_completo)?.nombre_completo as string | undefined
+  const obs        = estatusPrioritario(ticket.observaciones || [])
+  const colorTramite = tramite?.color_hex || '#8a8580'
+
+  // Tiempo del plazo (SLA)
+  const vence   = ticket.sla_vence_at ? new Date(ticket.sla_vence_at) : null
+  const creado  = ticket.created_at ? new Date(ticket.created_at) : null
+  const vencido = !final && !!vence && vence.getTime() < Date.now()
+  const pronto  = !final && !vencido && !!vence && differenceInHours(vence, new Date()) < 24
+  const textoSla = vence ? formatDistanceToNowStrict(vence, { locale: es }) : ''
+  let avance = vencido ? 1 : 0
+  if (!vencido && vence && creado && vence > creado) {
+    avance = Math.min(1, Math.max(0.03, (Date.now() - creado.getTime()) / (vence.getTime() - creado.getTime())))
+  }
+  const colorBarra = vencido ? '#E24B4A' : pronto || avance > 0.75 ? '#D99A0B' : '#21A366'
+  const siguiente = onSiguiente ? COLUMNAS.find(c => c.id === SIGUIENTE[ticket.estado]) : null
+
+  const clases = [
+    k.card,
+    vencido ? k.late : '',
+    completado ? k.done : '',
+    cancelado ? k.cancel : '',
+    nuevo ? k.fresh : '',
+    arrastrando ? k.dragging : '',
+    guardando ? k.saving : '',
+  ].join(' ')
 
   return (
-    <a href={`/tickets/${ticket.id}`}
-      className="block rounded-xl p-3 no-underline transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+    <a
+      href={`/tickets/${ticket.id}`}
+      className={clases}
+      draggable={!guardando}
+      onDragStart={e => {
+        e.dataTransfer.setData('text/plain', ticket.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart(ticket.id)
+      }}
+      onDragEnd={onDragEnd}
       style={{
-        background: '#fff',
-        border:     '1px solid rgba(0,0,0,0.06)',
-        borderLeft: `3px solid ${tramite?.color_hex || '#ddd'}`,
-        boxShadow:  '0 1px 3px rgba(0,0,0,0.04)',
-      }}>
-
-      {/* Overlay cancelado */}
-      {cancelado && (
-        <div className="absolute inset-0 z-10 rounded-xl flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(1px)' }}>
-          <span className="text-[9px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full"
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.15)' }}>
-            Cancelado
-          </span>
-        </div>
+        animationDelay: `${Math.min(indice, 10) * 35}ms`,
+        viewTransitionName: nombreTransicion ? `tk-${ticket.id}` : undefined,
+      } as React.CSSProperties}
+    >
+      {siguiente && !guardando && (
+        <button
+          className={k.next}
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onSiguiente?.() }}
+          title={`Mover a ${siguiente.label}`}
+          aria-label={`Mover a ${siguiente.label}`}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </button>
       )}
 
-      {/* Overlay verde para completados */}
-      {completado && (
-        <div className="absolute inset-0 z-10 rounded-xl flex flex-col items-center justify-center gap-1"
-          style={{ background: 'rgba(16,90,40,0.6)', backdropFilter: 'blur(1px)' }}>
-          <span className="text-[22px]">✅</span>
-          <span className="text-[9px] font-black tracking-widest uppercase"
-            style={{ color: 'rgba(255,255,255,0.7)' }}>
-            Completado
-          </span>
+      <div className={k.cHead}>
+        <span className={k.tile} style={{ background: colorTramite }}>{inicialesTramite(tramite?.nombre)}</span>
+        <div className={k.cTitle}>
+          <div className={k.tramite}>{tramite?.nombre || 'Trámite'}</div>
+          <span className={k.num}>{ticket.numero}{ticket.folio_dba ? ` · Folio ${ticket.folio_dba}` : ''}</span>
         </div>
-      )}
-      {/* Número + bolita estatus */}
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="text-[9px] font-bold tracking-wider" style={{ color: '#C0BAB2', fontFamily: 'monospace' }}>
-          {ticket.numero}
-        </div>
-        {estatusPrioritario && !cancelado && (
-          <div style={{
-            width:        7,
-            height:       7,
-            borderRadius: '50%',
-            background:   estatusPrioritario.dot,
-            animation:    'pulse-dot 1.5s ease-in-out infinite',
-            boxShadow:    `0 0 6px ${estatusPrioritario.dot}`,
-            flexShrink:   0,
-          }} />
-        )}
       </div>
 
-      <div className="text-[11.5px] font-semibold leading-snug mb-1" style={{ color: '#1A1917' }}>
-        {tramite?.nombre || 'Trámite'}
-      </div>
-      {primero && (
-        <div className="text-[10.5px] mb-2.5 truncate" style={{ color: '#AAA' }}>{primero}</div>
+      {cliente && (
+        <div className={k.client}>
+          <span className={k.avatar}>{inicialesPersona(cliente)}</span>
+          <span>{cliente.toLowerCase()}</span>
+        </div>
       )}
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md truncate"
-          style={{ background: `${area?.color_hex}18`, color: area?.color_hex || '#666' }}>
-          {area?.nombre || '—'}
+
+      <div className={k.chips}>
+        <span className={k.chip} style={{ background: `${area?.color_hex || '#888'}17`, color: area?.color_hex || '#666' }}>
+          {area?.nombre || 'Sin área'}
         </span>
-        {!cancelado && (
-          <span className="text-[9.5px] font-medium flex-shrink-0" style={{ color: vencido ? '#E24B4A' : '#B0ADAA' }}>
-            {vencido ? '⚠ ' : ''}{slaLabel}
+        {!final && obs && (
+          <span className={`${k.chip} ${obs.prioridad <= 2 ? k.urgent : ''}`} style={{ background: obs.bg, color: obs.dot }} title="Observaciones">
+            <i />{obs.label}
           </span>
         )}
       </div>
+
+      {final ? (
+        <span className={k.finalTag} style={completado
+          ? { background: 'rgba(59,109,17,0.12)', color: '#3B6D11' }
+          : { background: 'rgba(107,114,128,0.12)', color: '#6B7280' }}>
+          {completado ? '✓ Completado' : 'Cancelado'}
+        </span>
+      ) : vence && (
+        <div className={`${k.time} ${vencido ? k.timeLate : pronto ? k.timeSoon : ''}`} title={`Vence: ${vence.toLocaleString('es-MX')}`}>
+          <div className={k.timeRow}>
+            <span>{vencido ? `Vencido hace ${textoSla}` : `Vence en ${textoSla}`}</span>
+            <span>{vence.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
+          </div>
+          <div className={k.track}><i style={{ width: `${Math.round(avance * 100)}%`, background: colorBarra }} /></div>
+        </div>
+      )}
     </a>
   )
 }

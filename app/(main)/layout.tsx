@@ -9,11 +9,12 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   if (!user) redirect('/login')
 
   return (
-    <div className="flex flex-col h-screen" style={{ background: '#F2F1EE' }}>
-      <Topbar />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-4 pt-2" style={{ background: '#F2F1EE' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: '#F2F1EE' }}>
+      {/* Riel de navegación a todo lo alto, como WhatsApp Web */}
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Topbar />
+        <main className="flex-1 min-h-0 overflow-y-auto p-4 pt-2" style={{ background: '#F2F1EE' }}>
           {children}
         </main>
       </div>

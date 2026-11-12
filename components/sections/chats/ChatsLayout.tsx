@@ -1,580 +1,331 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import s from './wa.module.css'
 import ListaConversaciones from './ListaConversaciones'
-import VistaChat           from './VistaChat'
+import VistaChat from './VistaChat'
+import { apiPost, calcularVentana, ApiError } from './waUtils'
 
 interface Props {
   conversacionesIniciales: any[]
-  areas:                   any[]
+  areas: any[]
 }
 
-const ESTATUS_CONFIG = {
-  pendiente: { label: 'Pendiente', color: '#F59E0B', bg: '#FEF3C7' },
-  atendido:  { label: 'Atendido',  color: '#10B981', bg: '#D1FAE5' },
-  demorado:  { label: 'Demorado',  color: '#E24B4A', bg: '#FEE2E2' },
-}
+type Filtro = 'todas' | 'no_leidas' | 'por_vencer' | 'pendiente' | 'demorado' | 'atendido'
+
+const ordenar = (lista: any[]) =>
+  [...lista].sort((a, b) => new Date(b.ultimo_mensaje_at).getTime() - new Date(a.ultimo_mensaje_at).getTime())
 
 export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
-  const searchParams       = useSearchParams()
-  const convParam          = searchParams.get('conv')
-  const supabase           = createClient()
+  const searchParams = useSearchParams()
+  const convParam = searchParams.get('conv')
+  const supabase = useMemo(() => createClient(), [])
 
-  const [conversaciones,   setConversaciones]   = useState(conversacionesIniciales)
+  const [conversaciones, setConversaciones] = useState<any[]>(conversacionesIniciales)
   const [convSeleccionada, setConvSeleccionada] = useState<any | null>(null)
-  const [filtroArea,       setFiltroArea]       = useState<string>('todas')
-  const [filtroEstatus,    setFiltroEstatus]    = useState<string>('todos')
+  const [filtro, setFiltro] = useState<Filtro>('todas')
+  const [filtroArea, setFiltroArea] = useState<string>('todas')
   const [busqueda, setBusqueda] = useState('')
-  
-  const [modalNueva,    setModalNueva]    = useState(false)
-  const [nuevoTelefono, setNuevoTelefono] = useState('')
-  const [nuevoNombre,   setNuevoNombre]   = useState('')
-  const [iniciando,     setIniciando]     = useState(false)
-  
-  const [convExistente, setConvExistente] = useState<any | null>(null)
-  const [verificando, setVerificando] = useState(false)
+  const [vista, setVista] = useState<'chats' | 'directorio'>('chats')
   const [esAdmin, setEsAdmin] = useState(false)
-  const [directorioAbierto, setDirectorioAbierto] = useState(false)
   const [usuarioAreaId, setUsuarioAreaId] = useState<string | null>(null)
+  const [copiado, setCopiado] = useState<string | null>(null)
 
+  const [modalNueva, setModalNueva] = useState(false)
+  const [nuevoTelefono, setNuevoTelefono] = useState('')
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [iniciando, setIniciando] = useState(false)
+  const [errorNueva, setErrorNueva] = useState<string | null>(null)
+
+  // Refs para usar el estado más reciente dentro del canal de tiempo real
+  const seleccionRef = useRef<any | null>(null)
+  const permisosRef = useRef({ esAdmin: false, areaId: null as string | null })
+  useEffect(() => { seleccionRef.current = convSeleccionada }, [convSeleccionada])
+  useEffect(() => { permisosRef.current = { esAdmin, areaId: usuarioAreaId } }, [esAdmin, usuarioAreaId])
+
+  // Abrir conversación desde ?conv=
   useEffect(() => {
-    if (convParam && conversacionesIniciales.length > 0) {
-      const conv = conversacionesIniciales.find(c => c.id === convParam)
-      if (conv) setConvSeleccionada(conv)
-    }
+    if (!convParam) return
+    const conv = conversacionesIniciales.find(c => c.id === convParam)
+    if (conv) setConvSeleccionada(conv)
   }, [convParam, conversacionesIniciales])
 
+  // Rol y área del usuario
   useEffect(() => {
-    const channel = supabase
-      .channel('chats-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones_wa' },
-        async payload => {
-          if (payload.eventType === 'INSERT') {
-            const { data } = await supabase
-              .from('conversaciones_wa')
-              .select('*, areas(nombre, color_hex)')
-              .eq('id', payload.new.id).single()
-            
-            if (data) {
-              // Solo agregar si es del área del usuario o si es admin
-              if (esAdmin || data.area_id === usuarioAreaId) {
-                setConversaciones(prev => {
-                  if (prev.find(c => c.id === data.id)) return prev
-                  return [data, ...prev]
-                })
-              }
-            }
-          }
-          if (payload.eventType === 'UPDATE') {
-            setConversaciones(prev => prev.map(c =>
-              c.id === payload.new.id ? { ...c, ...payload.new } : c
-            ).sort((a, b) => new Date(b.ultimo_mensaje_at).getTime() - new Date(a.ultimo_mensaje_at).getTime()))
-            if (convSeleccionada?.id === payload.new.id) {
-              setConvSeleccionada((prev: any) => ({ ...prev, ...payload.new }))
-            }
-          }
-        })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [convSeleccionada])
-
-
-  useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }: any) => {
       if (!user) return
       const { data } = await supabase
         .from('usuarios_sistema')
-        .select('area_id')
+        .select('area_id, rol')
         .eq('email', user.email || '')
         .single()
-      if (data) setUsuarioAreaId(data.area_id)
+      if (data) {
+        setUsuarioAreaId(data.area_id)
+        setEsAdmin(['admin', 'notario', 'asistente'].includes(data.rol))
+      }
     })
   }, [])
 
+  // Tiempo real de la lista
   useEffect(() => {
-    const cached = sessionStorage.getItem('usuario_sistema')
-    if (cached) {
-      const u = JSON.parse(cached)
-      setEsAdmin(['admin', 'notario', 'asistente'].includes(u.rol))
-      return
-    }
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data } = await supabase.from('usuarios_sistema').select('rol').eq('email', user.email || '').single()
-      if (data) setEsAdmin(['admin', 'notario', 'asistente'].includes(data.rol))
-    })
+    const channel = supabase
+      .channel('chats-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones_wa' }, async (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const { data } = await supabase
+            .from('conversaciones_wa')
+            .select('*, areas(nombre, color_hex)')
+            .eq('id', (payload.new as any).id)
+            .single()
+          const { esAdmin: admin, areaId } = permisosRef.current
+          if (data && (admin || data.area_id === areaId)) {
+            setConversaciones(prev => (prev.some(c => c.id === data.id) ? prev : ordenar([data, ...prev])))
+          }
+        }
+        if (payload.eventType === 'UPDATE') {
+          const nuevo = payload.new as any
+          setConversaciones(prev => ordenar(prev.map(c => (c.id === nuevo.id ? { ...c, ...nuevo } : c))))
+          if (seleccionRef.current?.id === nuevo.id) {
+            setConvSeleccionada((prev: any) => ({ ...prev, ...nuevo }))
+          }
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
-  
   async function cambiarEstatus(convId: string, estatus: string) {
     await supabase.from('conversaciones_wa').update({ estatus }).eq('id', convId)
-    setConversaciones(prev => prev.map(c => c.id === convId ? { ...c, estatus } : c))
-    if (convSeleccionada?.id === convId) {
-      setConvSeleccionada((prev: any) => ({ ...prev, estatus }))
+    setConversaciones(prev => prev.map(c => (c.id === convId ? { ...c, estatus } : c)))
+    if (convSeleccionada?.id === convId) setConvSeleccionada((prev: any) => ({ ...prev, estatus }))
+  }
+
+  function seleccionar(conv: any) {
+    setConvSeleccionada(conv)
+    if (conv.no_leidos > 0) {
+      setConversaciones(prev => prev.map(c => (c.id === conv.id ? { ...c, no_leidos: 0 } : c)))
     }
   }
 
-  async function iniciarConversacion() {
-    if (!nuevoTelefono.trim()) return
-    setIniciando(true)
+  // ─── Nueva conversación ───
+  const digitosNuevo = nuevoTelefono.replace(/\D/g, '').slice(-10)
+  const convExistente = digitosNuevo.length === 10
+    ? conversaciones.find(c => (c.telefono || '').replace(/\D/g, '').endsWith(digitosNuevo))
+    : null
 
-    // Obtener area_id del usuario si no está cargado
-    let areaIdFinal = usuarioAreaId
-    if (!areaIdFinal) {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase
-          .from('usuarios_sistema')
-          .select('area_id')
-          .eq('email', user.email || '')
-          .single()
-        if (data) areaIdFinal = data.area_id
-      }
-    }
+  async function iniciarConversacion() {
+    if (digitosNuevo.length !== 10 || iniciando) return
+    setIniciando(true); setErrorNueva(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/twilio/nueva-conversacion`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telefono: nuevoTelefono.trim(),
-          nombre:   nuevoNombre.trim() || nuevoTelefono.trim(),
-          area_id:  usuarioAreaId,  // ← área del usuario logueado
-        }),
+      const conv = await apiPost('/api/meta/nueva-conversacion', {
+        telefono: nuevoTelefono,
+        nombre: nuevoNombre.trim() || null,
+        area_id: usuarioAreaId,
       })
-      if (!res.ok) throw new Error('Error al iniciar')
-      const conv = await res.json()
-      setConversaciones(prev => [conv, ...prev])
+      setConversaciones(prev => ordenar([conv, ...prev.filter(c => c.id !== conv.id)]))
       setConvSeleccionada(conv)
-      setModalNueva(false)
-      setNuevoTelefono('')
-      setNuevoNombre('')
+      cerrarModal()
     } catch (e) {
-      alert('Error al iniciar conversación')
+      setErrorNueva(e instanceof ApiError ? e.message : 'No se pudo iniciar la conversación')
     } finally {
       setIniciando(false)
     }
   }
 
-  async function verificarNumero(tel: string) {
-    if (tel.length < 8) { setConvExistente(null); return }
-    setVerificando(true)
-    try {
-      const telNorm = tel.replace(/\s|-/g, '')
-      const found   = conversaciones.find(c => 
-        c.telefono?.replace('+521', '+52').replace(/\s/g, '').includes(telNorm) ||
-        telNorm.includes(c.telefono?.replace('+521', '+52').replace(/\s/g, '').slice(-8) || '')
-      )
-      setConvExistente(found || null)
-    } finally {
-      setVerificando(false)
-    }
+  function cerrarModal() {
+    setModalNueva(false); setNuevoTelefono(''); setNuevoNombre(''); setErrorNueva(null)
   }
 
+  // ─── Filtros ───
+  const ahora = Date.now()
   const convFiltradas = conversaciones.filter(c => {
-    if (filtroArea    !== 'todas' && c.area_id !== filtroArea) return false
-    if (filtroEstatus !== 'todos' && (c.estatus || 'pendiente') !== filtroEstatus) return false
+    if (filtroArea !== 'todas' && c.area_id !== filtroArea) return false
+    const est = c.estatus || 'pendiente'
+    if (filtro === 'no_leidas' && !(c.no_leidos > 0)) return false
+    if (filtro === 'por_vencer' && calcularVentana(c.ultimo_entrante_at, ahora).estado !== 'closing') return false
+    if (['pendiente', 'demorado', 'atendido'].includes(filtro) && est !== filtro) return false
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase()
-      const nombre   = (c.nombre || '').toLowerCase()
-      const telefono = (c.telefono || '').toLowerCase()
-      if (!nombre.includes(q) && !telefono.includes(q)) return false
+      if (![c.nombre, c.telefono, c.ultimo_mensaje].some(v => (v || '').toLowerCase().includes(q))) return false
     }
     return true
   })
 
-  const totalNoLeidos = conversaciones.reduce((acc, c) => acc + (c.no_leidos || 0), 0)
-  const countPendiente = conversaciones.filter(c => (c.estatus || 'pendiente') === 'pendiente').length
-  const countDemorado  = conversaciones.filter(c => c.estatus === 'demorado').length
+  const noLeidas = conversaciones.filter(c => c.no_leidos > 0).length
+  const porVencer = conversaciones.filter(c => calcularVentana(c.ultimo_entrante_at, ahora).estado === 'closing').length
+  const conteo = (clave: string) => conversaciones.filter(c => (c.estatus || 'pendiente') === clave).length
+
+  const FILTROS: { id: Filtro; label: string }[] = [
+    { id: 'todas', label: 'Todas' },
+    { id: 'no_leidas', label: `No leídas${noLeidas ? ` ${noLeidas}` : ''}` },
+    { id: 'por_vencer', label: `Por vencer${porVencer ? ` ${porVencer}` : ''}` },
+    { id: 'demorado', label: `Demoradas${conteo('demorado') ? ` ${conteo('demorado')}` : ''}` },
+    { id: 'pendiente', label: 'Pendientes' },
+    { id: 'atendido', label: 'Atendidas' },
+  ]
+
+  const areasConNumero = areas.filter((a: any) => a.numero_twilio)
 
   return (
-    <div className="flex h-[calc(100vh-80px)] -m-6 overflow-hidden rounded-2xl"
-      style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-
-      {/* Panel izquierdo */}
-      <div className="flex-shrink-0 flex flex-col"
-        style={{ width: '400px', borderRight: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-
-        {/* Header */}
-        <div className="px-4 pt-4 pb-3"
-          style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[15px] font-bold" style={{ color: '#111' }}>
-              Chats WhatsApp
-            </div>
-            <div className="flex items-center gap-2">
-              {totalNoLeidos > 0 && (
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-full text-white"
-                  style={{ background: '#25D366' }}>
-                  {totalNoLeidos} nuevos
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Stats rápidos */}
-          <div className="flex gap-2 mb-3">
-            {[
-              { label: 'Pendientes', count: countPendiente, color: '#F59E0B', bg: '#FEF3C7' },
-              { label: 'Demorados',  count: countDemorado,  color: '#E24B4A', bg: '#FEE2E2' },
-              { label: 'Total',      count: conversaciones.length, color: '#185FA5', bg: '#E6F1FB' },
-            ].map(s => (
-              <div key={s.label} className="flex-1 rounded-xl px-2 py-1.5 text-center"
-                style={{ background: s.bg }}>
-                <div className="text-[16px] font-bold" style={{ color: s.color }}>{s.count}</div>
-                <div className="text-[9px] font-medium" style={{ color: s.color, opacity: 0.8 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Buscador */}
-          <div className="relative mb-2">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px]" style={{ color: '#9C9890' }}>🔍</span>
-            <input
-              type="text"
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre o número..."
-              className="w-full pl-8 pr-3 py-2 rounded-xl text-[12px] outline-none"
-              style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
-            />
-          </div>
-
-          {/* Filtro estatus */}
-          <div className="flex gap-1.5">
-            {[
-              { id: 'todos',     label: 'Todos'     },
-              { id: 'pendiente', label: '🟡 Pendiente' },
-              { id: 'demorado',  label: '🔴 Demorado'  },
-              { id: 'atendido',  label: '🟢 Atendido'  },
-            ].map(f => (
-              <button key={f.id} onClick={() => setFiltroEstatus(f.id)}
-                className="flex-1 py-1 rounded-lg text-[10px] font-medium cursor-pointer border-none transition-all"
-                style={{
-                  background: filtroEstatus === f.id ? '#111' : '#F3F4F6',
-                  color:      filtroEstatus === f.id ? '#fff' : '#666',
-                }}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-shrink-0 p-3"
-          style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-          <button onClick={() => setDirectorioAbierto(!directorioAbierto)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[13px] font-bold cursor-pointer border-none transition-all"
-            style={{ background: directorioAbierto ? '#111' : '#F3F4F6', color: directorioAbierto ? '#fff' : '#666' }}>
-            📋 Directorio Notaria
-          </button>
-        </div>
-
-        {/* Filtro por área — solo admins */}
-        {esAdmin && (
-          <div className="px-3 py-2 flex gap-1.5 overflow-x-auto flex-shrink-0"
-            style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-            <button onClick={() => setFiltroArea('todas')}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
-              style={{ background: filtroArea === 'todas' ? '#111' : '#F3F4F6', color: filtroArea === 'todas' ? '#fff' : '#666' }}>
-              Todas
+    <div className={s.app}>
+      {/* ── Lista ── */}
+      <aside className={s.side}>
+        <div className={s.sideHead}>
+          <h1>{vista === 'chats' ? 'Mensajes' : 'Directorio'}</h1>
+          <div className={s.acts}>
+            <button
+              className={`${s.roundBtn} ${vista === 'directorio' ? s.roundBtnOn : ''}`}
+              onClick={() => setVista(vista === 'chats' ? 'directorio' : 'chats')}
+              title="Directorio de números de la notaría"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z" /><path d="M8 7h8M8 11h6" /></svg>
             </button>
-            {areas.map(a => (
-              <button key={a.id} onClick={() => setFiltroArea(a.id)}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer border-none flex-shrink-0 transition-all"
-                style={{ background: filtroArea === a.id ? a.color_hex : '#F3F4F6', color: filtroArea === a.id ? '#fff' : '#666' }}>
-                {a.nombre}
-              </button>
-            ))}
+            <button className={s.roundBtn} onClick={() => setModalNueva(true)} title="Nueva conversación">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.5 8.5 0 1 1 21 11.5z" /><path d="M12 8v7M8.5 11.5h7" /></svg>
+            </button>
           </div>
-        )}
-
-        {/* Count filtrado */}
-        <div className="px-4 py-1.5 flex-shrink-0"
-          style={{ borderBottom: '1px solid rgba(0,0,0,0.04)', background: '#FAFAF8' }}>
-          <span className="text-[11px]" style={{ color: '#9C9890' }}>
-            {convFiltradas.length} conversación{convFiltradas.length !== 1 ? 'es' : ''}
-          </span>
         </div>
 
-        {/* Lista */}
-        <div className="flex-1 overflow-y-auto">
-          <ListaConversaciones
-            conversaciones={convFiltradas}
-            seleccionada={convSeleccionada?.id}
-            onSelect={conv => {
-              setConvSeleccionada(conv)
-              if (conv.no_leidos > 0) {
-                supabase.from('conversaciones_wa').update({ no_leidos: 0 }).eq('id', conv.id)
-                setConversaciones(prev => prev.map(c => c.id === conv.id ? { ...c, no_leidos: 0 } : c))
-              }
-            }}
-            onCambiarEstatus={cambiarEstatus}
-          />
-        </div>
-        {/* Botón nueva conversación — flotante abajo */}
-        <div className="flex-shrink-0 p-3"
-          style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-          <button onClick={() => setModalNueva(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-[13px] font-bold cursor-pointer border-none transition-all"
-            style={{
-              background:   '#25D366',
-              color:        '#fff',
-              boxShadow:    '0 4px 12px rgba(37,211,102,0.3)',
-            }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-            </svg>
-            Nueva conversación
-          </button>
-        </div>
-      </div>
-
-      {/* Panel derecho — Chat + Directorio */}
-      <div className="flex-1 flex" style={{ minWidth: 0 }}>
-
-        {/* Vista del chat */}
-        <div className="flex-1 flex flex-col" style={{ background: '#F7F7F5', minWidth: 0 }}>
-          {convSeleccionada ? (
-            <VistaChat
-              conversacion={convSeleccionada}
-              onMensajeEnviado={() => {}}
-              onCambiarEstatus={(estatus) => cambiarEstatus(convSeleccionada.id, estatus)}
-            />
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <div style={{ fontSize: 56 }}>💬</div>
-              <div>
-                <div className="text-[16px] font-bold text-center mb-1" style={{ color: '#333' }}>
-                  Selecciona una conversación
-                </div>
-                <div className="text-[13px] text-center" style={{ color: '#9C9890' }}>
-                  Los mensajes de WhatsApp aparecen aquí en tiempo real
-                </div>
-              </div>
-              <div className="flex gap-3 mt-2">
-                {[
-                  { emoji: '🟡', label: `${countPendiente} pendientes` },
-                  { emoji: '🔴', label: `${countDemorado} demorados`  },
-                ].filter(s => parseInt(s.label) > 0).map(s => (
-                  <div key={s.label} className="px-3 py-1.5 rounded-xl text-[12px]"
-                    style={{ background: '#F3F4F6', color: '#666' }}>
-                    {s.emoji} {s.label}
-                  </div>
-                ))}
-              </div>
+        {vista === 'chats' ? (
+          <>
+            <div className={s.searchRow}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zM6.5 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" /></svg>
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar conversación o número" />
             </div>
-          )}
-        </div>
-
-        {/* Panel directorio */}
-        {directorioAbierto && (
-          <div className="flex-shrink-0 flex flex-col overflow-hidden"
-            style={{ width: 260, borderLeft: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-
-            <div className="px-4 py-3 flex items-center justify-between flex-shrink-0"
-              style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-              <div className="text-[13px] font-bold pt-6" style={{ color: '#111' }}>Directorio WhatsApp</div>
-              <button onClick={() => setDirectorioAbierto(false)}
-                className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer border-none text-[11px] pt-6"
-                style={{ background: '#F3F4F6', color: '#666' }}>✕</button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto py-2">
-              {areas.filter((a: any) => a.numero_twilio).map((a: any) => (
-                <div key={a.id} className="flex items-center justify-between px-4 py-2.5"
-                  style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <div className="w-2 h-2 rounded-full" style={{ background: a.color_hex }} />
-                      <span className="text-[12px] font-semibold" style={{ color: '#111' }}>{a.nombre}</span>
-                    </div>
-                    <span className="text-[11px] font-mono" style={{ color: '#9C9890' }}>
-                      {a.numero_twilio}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(a.numero_twilio)
-                      const btn = document.getElementById(`copy-${a.id}`)
-                      if (btn) {
-                        btn.textContent = '✓ Copiado'
-                        btn.style.background = '#EAF3DE'
-                        btn.style.color = '#3B6D11'
-                        setTimeout(() => {
-                          btn.textContent = '📋 Copiar'
-                          btn.style.background = '#F3F4F6'
-                          btn.style.color = '#666'
-                        }, 1500)
-                      }
-                    }}
-                    id={`copy-${a.id}`}
-                    className="px-3 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
-                    style={{ background: '#F3F4F6', color: '#666' }}>
-                    📋 Copiar
-                  </button>
-                </div>
+            <div className={s.filters}>
+              {FILTROS.map(f => (
+                <button key={f.id} className={filtro === f.id ? s.on : ''} onClick={() => setFiltro(f.id)}>{f.label}</button>
               ))}
             </div>
-
-            <div className="px-4 py-3 flex-shrink-0"
-              style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#FAFAF8' }}>
-              <div className="text-[10px] text-center" style={{ color: '#9C9890' }}>
-                Clic en 📋 para copiar el número
-              </div>
+            <div className={s.listTools}>
+              <span className={s.count}>
+                {convFiltradas.length} conversaci{convFiltradas.length !== 1 ? 'ones' : 'ón'}
+              </span>
+              {esAdmin && (
+                <select
+                  className={s.selectPill}
+                  value={filtroArea}
+                  onChange={e => setFiltroArea(e.target.value)}
+                  aria-label="Filtrar por área"
+                >
+                  <option value="todas">Todas las áreas</option>
+                  {areas.map((a: any) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                </select>
+              )}
             </div>
+            <div className={s.chatlist}>
+              <ListaConversaciones
+                conversaciones={convFiltradas}
+                seleccionada={convSeleccionada?.id}
+                onSelect={seleccionar}
+                onCambiarEstatus={cambiarEstatus}
+              />
+            </div>
+          </>
+        ) : (
+          <div className={s.chatlist}>
+            <div className={s.dirNote}>Números de WhatsApp de cada área de la notaría. Copia el número para compartirlo con un cliente.</div>
+            {areasConNumero.map((a: any) => (
+              <div key={a.id} className={s.contact}>
+                <div className={s.avatar} style={{ background: a.color_hex, width: 42, height: 42, fontSize: '0.85rem' }}>
+                  {a.nombre.slice(0, 2).toUpperCase()}
+                </div>
+                <div className={s.cMain}>
+                  <b>{a.nombre}</b>
+                  <span>{a.numero_twilio}</span>
+                </div>
+                <button
+                  className={`${s.copyBtn} ${copiado === a.id ? s.ok : ''}`}
+                  onClick={() => {
+                    navigator.clipboard.writeText(a.numero_twilio)
+                    setCopiado(a.id)
+                    setTimeout(() => setCopiado(null), 1500)
+                  }}
+                >
+                  {copiado === a.id ? 'Copiado' : 'Copiar'}
+                </button>
+              </div>
+            ))}
           </div>
         )}
+      </aside>
 
-      </div>
+      {/* ── Conversación ── */}
+      <section className={s.main}>
+        {convSeleccionada ? (
+          <VistaChat
+            key={convSeleccionada.id}
+            conversacion={convSeleccionada}
+            onCambiarEstatus={estatus => cambiarEstatus(convSeleccionada.id, estatus)}
+          />
+        ) : (
+          <div className={s.empty}>
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.5 8.5 0 1 1 21 11.5z" /></svg>
+            <b>Selecciona una conversación</b>
+            <span>Los mensajes de WhatsApp aparecen aquí en tiempo real.</span>
+          </div>
+        )}
+      </section>
 
+      {/* ── Modal nueva conversación ── */}
       {modalNueva && (
-        <div className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-          <div className="rounded-2xl w-full max-w-sm mx-4 overflow-hidden"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-
-            <div className="px-6 pt-5 pb-4 flex items-center justify-between"
-              style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+        <div className={s.overlay} onClick={cerrarModal}>
+          <div className={s.modal} onClick={e => e.stopPropagation()}>
+            <div className={s.modalHead}>
               <div>
-                <div className="text-[15px] font-bold" style={{ color: '#111' }}>Nueva conversación</div>
-                <div className="text-[11px] mt-0.5" style={{ color: '#9C9890' }}>
-                  Se enviará un mensaje de bienvenida al cliente
-                </div>
+                <b>Nueva conversación</b>
+                <span>Se enviará la plantilla de apertura de tu área</span>
               </div>
-              <button onClick={() => setModalNueva(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer border-none"
-                style={{ background: '#F3F4F6', color: '#666' }}>✕</button>
+              <button className={s.roundBtn} onClick={cerrarModal} aria-label="Cerrar">✕</button>
             </div>
+            <div className={s.modalBody}>
+              <div className={s.field}>
+                <label htmlFor="nuevo-tel">Número de WhatsApp</label>
+                <input
+                  id="nuevo-tel"
+                  value={nuevoTelefono}
+                  onChange={e => setNuevoTelefono(e.target.value)}
+                  placeholder="4611234567"
+                  inputMode="tel"
+                  autoFocus
+                />
+              </div>
 
-            <div className="px-6 py-4 flex flex-col gap-3">
-              <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block"
-                    style={{ color: '#9C9890' }}>Número de WhatsApp</label>
-                  <input type="text" value={nuevoTelefono}
-                    onChange={e => {
-                      setNuevoTelefono(e.target.value)
-                      verificarNumero(e.target.value)
-                    }}
-                    placeholder="Ej: 4611234567 o +524611234567"
-                    className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                    style={{ background: '#F7F7F5', border: `1px solid ${convExistente ? '#F59E0B' : 'rgba(0,0,0,0.08)'}`, color: '#111' }}
-                    autoFocus />
-
-                  {verificando && (
-                    <div className="flex items-center gap-2 mt-1.5 text-[12px]" style={{ color: '#9C9890' }}>
-                      <div className="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin"
-                        style={{ borderColor: '#9C9890', borderTopColor: 'transparent' }} />
-                      Verificando...
-                    </div>
-                  )}
-
-                  {convExistente && !verificando && (() => {
-                    const est     = convExistente.estatus || 'pendiente'
-                    const estConf = ({
-                      pendiente: { color: '#92400E', bg: '#FEF3C7', dot: '#F59E0B', label: 'Pendiente' },
-                      atendido:  { color: '#065F46', bg: '#D1FAE5', dot: '#10B981', label: 'Atendido'  },
-                      demorado:  { color: '#991B1B', bg: '#FEE2E2', dot: '#E24B4A', label: 'Demorado'  },
-                    } as any)[est] || { color: '#92400E', bg: '#FEF3C7', dot: '#F59E0B', label: 'Pendiente' }
-                    const area = convExistente.areas
-                    return (
-                      <div className="mt-2 rounded-xl overflow-hidden"
-                        style={{ border: `1px solid ${estConf.dot}40` }}>
-                        <div className="flex items-center gap-2 px-3 py-2" style={{ background: estConf.bg }}>
-                          <span className="text-[14px]">⚠️</span>
-                          <span className="text-[12px] font-bold" style={{ color: estConf.color }}>
-                            Este número ya tiene una conversación activa
-                          </span>
-                        </div>
-                        <div className="px-3 py-2.5 flex flex-col gap-1.5" style={{ background: '#FAFAF8' }}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium" style={{ color: '#666' }}>Nombre</span>
-                            <span className="text-[12px] font-semibold" style={{ color: '#111' }}>
-                              {convExistente.nombre || convExistente.telefono}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium" style={{ color: '#666' }}>Área</span>
-                            <div className="flex items-center gap-1.5">
-                              {area && <div className="w-2 h-2 rounded-full" style={{ background: area.color_hex }} />}
-                              <span className="text-[12px] font-semibold" style={{ color: '#111' }}>
-                                {area?.nombre || '—'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium" style={{ color: '#666' }}>Estado</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                              style={{ background: estConf.bg, color: estConf.color }}>
-                              {estConf.label}
-                            </span>
-                          </div>
-                          {convExistente.ultimo_mensaje && (
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-[11px] font-medium flex-shrink-0" style={{ color: '#666' }}>
-                                Último mensaje
-                              </span>
-                              <span className="text-[11px] truncate text-right" style={{ color: '#888', maxWidth: '60%' }}>
-                                {convExistente.ultimo_mensaje}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2 px-3 py-2.5"
-                          style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
-                          <button onClick={() => {
-                            setConvSeleccionada(convExistente)
-                            setModalNueva(false)
-                            setNuevoTelefono('')
-                            setConvExistente(null)
-                          }}
-                            className="flex-1 py-1.5 rounded-lg text-[12px] font-semibold cursor-pointer border-none"
-                            style={{ background: '#111', color: '#fff' }}>
-                            Ver conversación →
-                          </button>
-                          <button onClick={() => setConvExistente(null)}
-                            className="px-3 py-1.5 rounded-lg text-[12px] font-semibold cursor-pointer border-none"
-                            style={{ background: '#F3F4F6', color: '#666' }}>
-                            Ignorar
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
+              {convExistente && (
+                <div className={s.aviso}>
+                  Este número ya tiene una conversación con {convExistente.nombre || convExistente.telefono}
+                  {convExistente.areas ? ` en ${convExistente.areas.nombre}` : ''}.
+                  <div>
+                    <button
+                      className={s.btnGhost}
+                      onClick={() => { setConvSeleccionada(convExistente); cerrarModal() }}
+                    >
+                      Abrir conversación
+                    </button>
+                  </div>
                 </div>
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block"
-                  style={{ color: '#9C9890' }}>Nombre del cliente (opcional)</label>
-                <input type="text" value={nuevoNombre}
+              )}
+
+              <div className={s.field}>
+                <label htmlFor="nuevo-nombre">Nombre del cliente (opcional)</label>
+                <input
+                  id="nuevo-nombre"
+                  value={nuevoNombre}
                   onChange={e => setNuevoNombre(e.target.value)}
-                  placeholder="Ej: Juan García"
-                  className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
-                  style={{ background: '#F7F7F5', border: '1px solid rgba(0,0,0,0.08)', color: '#111' }}
-                  onKeyDown={e => e.key === 'Enter' && iniciarConversacion()} />
+                  placeholder="Juan García"
+                  onKeyDown={e => e.key === 'Enter' && iniciarConversacion()}
+                />
               </div>
-              <div className="px-3 py-2.5 rounded-xl text-[12px]"
-                style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-                💬 Se enviará el mensaje de bienvenida de N3 AI al cliente
-              </div>
-            </div>
 
-            <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-              <div className="flex gap-3 px-6 py-4">
-                <button onClick={() => setModalNueva(false)}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-                  style={{ background: '#F3F4F6', color: '#444' }}>
-                  Cancelar
-                </button>
-                <button onClick={iniciarConversacion}
-                  disabled={!nuevoTelefono.trim() || iniciando}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-                  style={{
-                    background: nuevoTelefono.trim() && !iniciando ? '#25D366' : '#F3F4F6',
-                    color:      nuevoTelefono.trim() && !iniciando ? '#fff' : '#9CA3AF',
-                  }}>
-                  {iniciando ? 'Enviando...' : '💬 Iniciar conversación'}
-                </button>
-              </div>
+              {errorNueva && <div className={s.errorBar} style={{ margin: 0 }}>{errorNueva}</div>}
+            </div>
+            <div className={s.modalFoot}>
+              <button className={s.btnGhost} onClick={cerrarModal}>Cancelar</button>
+              <button className={s.btnGreen} disabled={digitosNuevo.length !== 10 || iniciando} onClick={iniciarConversacion}>
+                {iniciando ? 'Enviando…' : 'Iniciar conversación'}
+              </button>
             </div>
           </div>
         </div>

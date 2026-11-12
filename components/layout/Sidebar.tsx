@@ -2,61 +2,132 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { useEffect, useState } from 'react'
-import AIButton from '@/components/sections/notaria-ai/AIButton'
-import AICard from '../sections/notaria-ai/AICard'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ModalConfirm from '@/components/ui/ModalConfirm'
 import ModalSinAcceso from '../ui/ModalSinAcceso'
 
-const navItems = [
-  { section: 'Operación' },
-  { href: '/',       label: 'Tablero de Solicitudes',          icon: '▦' },
-  { href: '/nueva',  label: 'Nueva solicitud', icon: '✦' },
-  { href: '/chats',  label: 'Chats WhatsApp',  icon: '💬' },
-  { section: 'Reportes' },
-  // { href: '/area',      label: 'Tablero por área', icon: '◧' },
-  { href: '/dashboard', label: 'Tablero de Control',        icon: '📊' },
-  { href: '/folios',    label: 'Buscar folios',     icon: '⌕' },
+// ─── Íconos de línea ─────────────────────────────────────────────────────────
+const ICONOS: Record<string, string> = {
+  tablero:  'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  nueva:    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6M9 15h6',
+  chats:    'M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.5 8.5 0 1 1 21 11.5z',
+  control:  'M3 3v18h18M7 16v-4M12 16V8M17 16v-7',
+  folios:   'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
+  tramites: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  usuarios: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  config:   'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  ai:       'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9zM5 2l.6 1.4L7 4l-1.4.6L5 6l-.6-1.4L3 4l1.4-.6z',
+  salir:    'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  candado:  'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  mas:      'M12 5v14M5 12h14',
+  chevron:  'M9 18l6-6-6-6',
+}
+
+function Icono({ nombre, size = 20 }: { nombre: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={ICONOS[nombre]} />
+    </svg>
+  )
+}
+
+const SECCIONES = [
+  {
+    titulo: 'Operación',
+    items: [
+      { href: '/',       label: 'Tablero de Solicitudes', icon: 'tablero' },
+      { href: '/nueva',  label: 'Nueva solicitud',        icon: 'nueva' },
+      { href: '/chats',  label: 'Chats WhatsApp',         icon: 'chats' },
+    ],
+  },
+  {
+    titulo: 'Reportes',
+    items: [
+      { href: '/dashboard', label: 'Tablero de Control', icon: 'control' },
+      { href: '/folios',    label: 'Buscar folios',      icon: 'folios' },
+    ],
+  },
 ]
 
-const configItems = [
-  { href: '/usuarios', label: 'Usuarios y permisos', icon: '👥' },
-  { href: '/config',   label: 'Configuración',        icon: '⚙' },
+const CONFIG_ITEMS = [
+  { href: '/usuarios', label: 'Usuarios y permisos', icon: 'usuarios', accion: 'gestionar usuarios y permisos' },
+  { href: '/config',   label: 'Configuración',       icon: 'config',   accion: 'acceder a la configuración' },
 ]
+
+const ROL_LABEL: Record<string, string> = {
+  admin:            'Administrador',
+  notario:          'Notario',
+  notario_auxiliar: 'Aux. Notarial',
+  recepcion:        'Recepción',
+  area_lead:        'Líder de área',
+  agente:           'Agente',
+  asistente:        'Asistente',
+}
+
+const ORO = '#F0C040'
+const RIEL = 64
+const ABIERTO = 256
 
 export default function Sidebar() {
   const pathname = usePathname()
   const router   = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
+
+  const [abierto, setAbierto] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [tramites,         setTramites]         = useState<any[]>([])
   const [tramitesExpanded, setTramitesExpanded] = useState(pathname.startsWith('/tramites'))
-  const [usuario, setUsuario] = useState<{ nombre: string, rol: string, letras: string, area?: string } | null>(null)
-  // Agrega estados:
-  const [modalEliminar, setModalEliminar] = useState<{ id: string, nombre: string } | null>(null)
-  const [modalSinAcceso, setModalSinAcceso] = useState<string | null>(null)
+  const [usuario, setUsuario] = useState<{ nombre: string; rol: string; letras: string; area?: string } | null>(null)
+  const [chatsSinLeer, setChatsSinLeer] = useState(0)
 
-  const [modalLogout, setModalLogout] = useState(false)
+  const [modalEliminar,  setModalEliminar]  = useState<{ id: string; nombre: string } | null>(null)
+  const [modalSinAcceso, setModalSinAcceso] = useState<string | null>(null)
+  const [modalLogout,    setModalLogout]    = useState(false)
 
   useEffect(() => {
-    supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('nombre').then(({ data }) => {
-      if (data) setTramites(data)
-    })
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        // Leer rol desde usuarios_sistema — no desde user_metadata
-        const { data: us } = await supabase
-          .from('usuarios_sistema')
-          .select('nombre, rol, areas(nombre)')
-          .eq('email', user.email || '')
-          .single()
-        if (us) {
-          const letras = us.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-          setUsuario({ nombre: us.nombre, rol: us.rol, letras, area: (us.areas as any)?.nombre })
-        }
+    supabase.from('tramites_config').select('id, nombre, color_hex, slug').order('nombre')
+      .then(({ data }: any) => { if (data) setTramites(data) })
+
+    supabase.auth.getUser().then(async ({ data: { user } }: any) => {
+      if (!user) return
+      const { data: us } = await supabase
+        .from('usuarios_sistema')
+        .select('nombre, rol, areas(nombre)')
+        .eq('email', user.email || '')
+        .single()
+      if (us) {
+        const letras = us.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+        setUsuario({ nombre: us.nombre, rol: us.rol, letras, area: (us.areas as any)?.nombre })
       }
     })
   }, [])
+
+  // Contador de chats sin leer (se refresca cada 30 s)
+  useEffect(() => {
+    async function contar() {
+      const { count } = await supabase
+        .from('conversaciones_wa')
+        .select('id', { count: 'exact', head: true })
+        .eq('activa', true)
+        .gt('no_leidos', 0)
+      setChatsSinLeer(count || 0)
+    }
+    contar()
+    const t = setInterval(contar, 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Se despliega con una pequeña pausa para que no se abra al pasar el mouse de largo
+  function alEntrar() {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setAbierto(true), 180)
+  }
+  function alSalir() {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setAbierto(false)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -65,239 +136,251 @@ export default function Sidebar() {
   }
 
   const activeTramiteId = pathname.startsWith('/tramites/') ? pathname.split('/tramites/')[1] : null
-
-  const rolLabel: Record<string, string> = {
-    admin:            'Administrador',
-    notario:          'Notario',
-    notario_auxiliar: 'Aux. Notarial',
-    recepcion:        'Recepción',
-    area_lead:        'Líder de área',
-    agente:           'Agente',
-  }
-
-  const rolesConAccesoConfig = ['notario', 'asistente', 'notario_auxiliar', 'admin']
-  const puedeConfig = rolesConAccesoConfig.includes(usuario?.rol || '')
+  const esActivo = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href))
+  const puedeConfig = ['notario', 'asistente', 'notario_auxiliar', 'admin'].includes(usuario?.rol || '')
 
   function verificarAcceso(accion: string, callback: () => void) {
-    if (puedeConfig) {
-      callback()
-    } else {
-      setModalSinAcceso(accion)
-    }
+    if (puedeConfig) callback()
+    else setModalSinAcceso(accion)
   }
 
+  async function crearTramite() {
+    verificarAcceso('crear nuevos trámites', async () => {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/nuevo`, { method: 'POST' })
+      if (res.ok) {
+        const nuevo = await res.json()
+        setTramites(prev => [...prev, nuevo])
+        setTramitesExpanded(true)
+        window.location.href = `/tramites/${nuevo.id}`
+      }
+    })
+  }
+
+  // ─── Estilos compartidos ───
+  const filaBase: React.CSSProperties = {
+    height: 44,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+    border: 'none',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    position: 'relative',
+    whiteSpace: 'nowrap',
+    transition: 'background .15s, color .15s',
+  }
+  const estiloFila = (activo: boolean): React.CSSProperties => ({
+    ...filaBase,
+    background: activo ? 'rgba(240,192,64,0.14)' : 'transparent',
+    color: activo ? ORO : 'rgba(255,255,255,0.62)',
+    fontWeight: activo ? 600 : 500,
+  })
+  const cajaIcono: React.CSSProperties = {
+    width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }
+  const etiqueta: React.CSSProperties = {
+    fontSize: 13, opacity: abierto ? 1 : 0, transition: 'opacity .15s', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, textAlign: 'left',
+  }
+  const indicador = (activo: boolean) =>
+    activo ? <span style={{ position: 'absolute', left: -10, top: 12, bottom: 12, width: 3, borderRadius: 3, background: ORO }} /> : null
+
+  const tituloSeccion = (texto: string) => (
+    <div style={{ height: 28, display: 'flex', alignItems: 'center', padding: '0 12px', marginTop: 10 }}>
+      {abierto ? (
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
+          {texto.toUpperCase()}
+        </span>
+      ) : (
+        <span style={{ width: 20, height: 1, background: 'rgba(255,255,255,0.12)' }} />
+      )}
+    </div>
+  )
+
   return (
-    <div className="flex-shrink-0 h-full p-2" style={{ background: '#F2F1EE' }}>
-      <aside className="w-[270px] flex flex-col h-full relative overflow-hidden"
-        style={{ background: '#0C0C10', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
-
-        {/* Glow effects */}
-        <div className="absolute pointer-events-none"
-          style={{ top: -80, left: -60, width: 220, height: 220,
-            background: 'radial-gradient(circle, rgba(184,130,10,0.15) 0%, transparent 70%)' }} />
-        <div className="absolute pointer-events-none"
-          style={{ bottom: -60, right: -40, width: 160, height: 160,
-            background: 'radial-gradient(circle, rgba(99,153,34,0.08) 0%, transparent 70%)' }} />
-
+    <div className="relative flex-shrink-0 h-full" style={{ width: RIEL + 16 }}>
+      <aside
+        onMouseEnter={alEntrar}
+        onMouseLeave={alSalir}
+        className="absolute flex flex-col"
+        style={{
+          top: 8, bottom: 8, left: 8,
+          width: abierto ? ABIERTO : RIEL,
+          zIndex: 50,
+          background: '#0C0C10',
+          borderRadius: 18,
+          padding: '12px 10px',
+          boxShadow: abierto ? '0 16px 48px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0,0,0,0.16)',
+          transition: 'width .2s ease, box-shadow .2s ease',
+          overflow: 'hidden',
+        }}
+      >
         {/* Logo */}
-        <div className="px-4 pt-5 pb-4 relative" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-[34px] h-[34px] rounded-xl flex items-center justify-center flex-shrink-0 text-[11px] font-black text-black"
-              style={{ background: 'linear-gradient(145deg, #B8820A, #F0C040)', boxShadow: '0 4px 12px rgba(184,130,10,0.4)' }}>
-              N3
-            </div>
-            <div>
-              <div className="text-[13px] font-semibold text-white leading-tight tracking-tight">Notaría No. 3</div>
-              <div className="text-[10px] leading-tight mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>Celaya, Guanajuato</div>
-            </div>
-          </div>
-        </div>
+        <a href="/" style={{ ...filaBase, height: 48, marginBottom: 6, color: '#fff' }}>
+          <span style={cajaIcono}>
+            <span style={{
+              width: 38, height: 38, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 900, color: '#000',
+              background: 'linear-gradient(145deg, #B8820A, #F0C040)', boxShadow: '0 4px 12px rgba(184,130,10,0.4)',
+            }}>N3</span>
+          </span>
+          <span style={{ ...etiqueta, lineHeight: 1.2 }}>
+            <b style={{ display: 'block', fontSize: 13 }}>Notaría No. 3</b>
+            <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>Celaya, Guanajuato</span>
+          </span>
+        </a>
 
-        {/* Nav */}
-        <nav className="flex-1 px-2.5 py-2 overflow-y-auto relative flex flex-col gap-0">
-
-          {/* Items principales */}
-          {navItems.map((item, i) => {
-            if ('section' in item) {
-              return (
-                <div key={i} className="px-2 pt-4 pb-1.5 text-[9px] font-bold tracking-[2.5px] uppercase"
-                  style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  {item.section}
-                </div>
-              )
-            }
-            const active = pathname === item.href
-            return (
-                <>
-                  <a key={item.href} href={item.href}
-                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] no-underline mb-0.5 transition-all duration-200"
-                    style={{
-                      background: active ? 'rgba(184,130,10,0.14)' : 'transparent',
-                      color:      active ? '#F0C040' : 'rgba(255,255,255,0.65)',
-                      fontWeight: active ? 600 : 400,
-                      boxShadow:  active ? 'inset 0 0 0 1px rgba(184,130,10,0.2)' : 'none',
-                    }}>
-                    <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
-                      style={{ background: active ? '#F0C040' : 'rgba(255,255,255,0.2)', boxShadow: active ? '0 0 8px rgba(240,192,64,0.6)' : 'none' }} />
-                    {item.label}
-                    {active && <span className="ml-auto text-[10px] opacity-40">◆</span>}
+        <nav className="flex-1 flex flex-col" style={{ overflowY: abierto ? 'auto' : 'hidden', overflowX: 'hidden', gap: 2 }}>
+          {SECCIONES.map(sec => (
+            <div key={sec.titulo} className="flex flex-col" style={{ gap: 2 }}>
+              {tituloSeccion(sec.titulo)}
+              {sec.items.map(item => {
+                const activo = esActivo(item.href)
+                const badge = item.href === '/chats' && chatsSinLeer > 0 ? chatsSinLeer : 0
+                return (
+                  <a key={item.href} href={item.href} style={estiloFila(activo)} title={abierto ? undefined : item.label}>
+                    {indicador(activo)}
+                    <span style={{ ...cajaIcono, position: 'relative' }}>
+                      <Icono nombre={item.icon} />
+                      {badge > 0 && !abierto && (
+                        <span style={{
+                          position: 'absolute', top: 6, right: 4, minWidth: 17, height: 17, borderRadius: 999, padding: '0 4px',
+                          background: '#21c063', color: '#fff', fontSize: 9.5, fontWeight: 800,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0C0C10',
+                        }}>{badge > 99 ? '99+' : badge}</span>
+                      )}
+                    </span>
+                    <span style={etiqueta}>{item.label}</span>
+                    {badge > 0 && abierto && (
+                      <span style={{
+                        marginRight: 10, minWidth: 22, height: 20, borderRadius: 999, padding: '0 6px', background: '#21c063',
+                        color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>{badge > 99 ? '99+' : badge}</span>
+                    )}
                   </a>
+                )
+              })}
+            </div>
+          ))}
 
-                  {/* Notaría AI después de Chats WhatsApp */}
-                  {/* {item.href === '/chats' && (
-                    <div className="mt-1 mb-1.5">
-                      <AIButton href="/notaria-ai" label="Notaría AI" variant="sidebar" />
-                    </div>
-                  )} */}
-                </>
-            )
-          })}
+          {tituloSeccion('Configuración del sistema')}
 
-          {/* Notaría AI — botón especial */}
-          {/* <div className="mt-1 mb-1">
-            <AIButton href="/notaria-ai" label="Notaría AI" variant="sidebar" />
-          </div> */}
-
-          {/* Configuración del sistema */}
-          <div className="px-2 pt-4 pb-1.5 text-[9px] font-bold tracking-[2.5px] uppercase"
-            style={{ color: 'rgba(255,255,255,0.25)' }}>
-            Configuración del sistema
-          </div>
-
-          {/* Trámites — colapsable */}
+          {/* Trámites */}
           <button
             onClick={() => setTramitesExpanded(!tramitesExpanded)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] mb-0.5 transition-all duration-200 border-none cursor-pointer"
-            style={{
-              background: tramitesExpanded ? 'rgba(184,130,10,0.08)' : 'transparent',
-              color:      tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.65)',
-            }}>
-            <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
-              style={{ background: tramitesExpanded ? '#F0C040' : 'rgba(255,255,255,0.2)' }} />
-            <span className="flex-1 text-left font-medium">Trámites</span>
-
-            {/* Botón nuevo trámite */}
-            <span
-              onClick={e => {
-                e.stopPropagation()
-                verificarAcceso('crear nuevos trámites', async () => {
-                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/nuevo`, { method: 'POST' })
-                  if (res.ok) {
-                    const nuevo = await res.json()
-                    setTramites(prev => [...prev, nuevo])
-                    setTramitesExpanded(true)
-                    window.location.href = `/tramites/${nuevo.id}`
-                  }
-                })
-              }}
-              className="text-[16px] px-1 rounded cursor-pointer transition-all"
-              style={{ color: 'rgba(255,255,255,0.9)' }}
-              title="Nuevo trámite">
-              +
-            </span>
-
-            <span className="text-[10px] transition-transform duration-200"
-              style={{ transform: tramitesExpanded ? 'rotate(90deg)' : 'rotate(0deg)', color: 'rgba(255,255,255,0.3)' }}>
-              ›
-            </span>
+            style={estiloFila(pathname.startsWith('/tramites'))}
+            title={abierto ? undefined : 'Trámites'}
+          >
+            {indicador(pathname.startsWith('/tramites'))}
+            <span style={cajaIcono}><Icono nombre="tramites" /></span>
+            <span style={etiqueta}>Trámites</span>
+            {abierto && (
+              <>
+                <span
+                  role="button"
+                  onClick={e => { e.stopPropagation(); crearTramite() }}
+                  title="Nuevo trámite"
+                  style={{ width: 26, height: 26, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.06)' }}
+                >
+                  <Icono nombre="mas" size={15} />
+                </span>
+                <span style={{ marginRight: 8, color: 'rgba(255,255,255,0.35)', transform: tramitesExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .15s', display: 'flex' }}>
+                  <Icono nombre="chevron" size={15} />
+                </span>
+              </>
+            )}
           </button>
 
-          {tramitesExpanded && (
-            <div className="ml-3 mb-1 flex flex-col gap-0.5">
+          {abierto && tramitesExpanded && (
+            <div className="flex flex-col" style={{ gap: 1, margin: '2px 0 4px 22px', paddingLeft: 10, borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
               {tramites.map(t => {
-                const active = activeTramiteId === t.id
+                const activo = activeTramiteId === t.id
                 return (
                   <div key={t.id} className="group relative">
                     <a href={`/tramites/${t.id}`}
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] no-underline transition-all duration-150"
+                      className="flex items-center gap-2 no-underline"
                       style={{
-                        color:      active ? '#fff' : 'rgba(255,255,255,0.50)',
-                        background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
-                        fontWeight: active ? 500 : 400,
+                        padding: '7px 28px 7px 10px', borderRadius: 9, fontSize: 12, whiteSpace: 'nowrap',
+                        color: activo ? '#fff' : 'rgba(255,255,255,0.5)',
+                        background: activo ? 'rgba(255,255,255,0.08)' : 'transparent',
+                        fontWeight: activo ? 600 : 400,
                       }}>
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                        style={{ background: t.color_hex, opacity: active ? 1 : 0.5 }} />
-                      <span className="truncate flex-1">{t.nombre}</span>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.color_hex, opacity: activo ? 1 : 0.6, flexShrink: 0 }} />
+                      <span className="truncate">{t.nombre}</span>
                     </a>
-
-                    {/* Botón eliminar en hover */}
                     <button
-                      onClick={e => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setModalEliminar({ id: t.id, nombre: t.nombre })
-                      }}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); setModalEliminar({ id: t.id, nombre: t.nombre }) }}
                       className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all cursor-pointer border-none bg-transparent w-5 h-5 rounded flex items-center justify-center text-[10px]"
-                      style={{ color: 'rgba(255,100,100,0.7)' }}
-                      title="Eliminar trámite">
-                      ✕
-                    </button>
+                      style={{ color: 'rgba(255,100,100,0.75)' }}
+                      title="Eliminar trámite"
+                    >✕</button>
                   </div>
                 )
               })}
             </div>
           )}
 
-          {/* Usuarios y config */}
-          {configItems.map(item => {
-            const active = pathname === item.href
+          {CONFIG_ITEMS.map(item => {
+            const activo = esActivo(item.href)
             return (
-              <button key={item.href}
-                onClick={() => verificarAcceso(
-                  item.href === '/usuarios' ? 'gestionar usuarios y permisos' : 'acceder a la configuración',
-                  () => router.push(item.href)
+              <button
+                key={item.href}
+                onClick={() => verificarAcceso(item.accion, () => router.push(item.href))}
+                style={estiloFila(activo)}
+                title={abierto ? undefined : item.label}
+              >
+                {indicador(activo)}
+                <span style={cajaIcono}><Icono nombre={item.icon} /></span>
+                <span style={etiqueta}>{item.label}</span>
+                {abierto && !puedeConfig && (
+                  <span style={{ marginRight: 10, color: 'rgba(255,255,255,0.25)', display: 'flex' }}><Icono nombre="candado" size={14} /></span>
                 )}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[12.5px] mb-0.5 transition-all duration-200 border-none cursor-pointer text-left"
-                style={{
-                  background: active ? 'rgba(184,130,10,0.14)' : 'transparent',
-                  color:      active ? '#F0C040' : 'rgba(255,255,255,0.65)',
-                  fontWeight: active ? 600 : 400,
-                  boxShadow:  active ? 'inset 0 0 0 1px rgba(184,130,10,0.2)' : 'none',
-                }}>
-                <div className="w-[5px] h-[5px] rounded-full flex-shrink-0"
-                  style={{ background: active ? '#F0C040' : 'rgba(255,255,255,0.2)', boxShadow: active ? '0 0 8px rgba(240,192,64,0.6)' : 'none' }} />
-                {item.label}
-                {active && <span className="ml-auto text-[10px] opacity-40">◆</span>}
-                {!puedeConfig && <span className="ml-auto text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>🔒</span>}
               </button>
             )
           })}
-
-          {/* Notaría AI — al final del nav, scrolleable */}
-          <div className="mt-auto pt-3">
-            <AICard href="/notaria-ai" />
-          </div>
-
         </nav>
 
-        
-        {/* Footer — usuario */}
-        <div className="p-2.5 relative" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button onClick={() => setModalLogout(true)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] transition-all duration-200 cursor-pointer border-none text-left"
-            style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <div className="w-[26px] h-[26px] rounded-lg flex items-center justify-center text-[9px] font-black text-black flex-shrink-0"
-              style={{ background: 'linear-gradient(145deg, #B8820A, #F0C040)' }}>
-              {usuario?.letras || 'US'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                {usuario?.nombre || 'Usuario'}
-              </div>
-              <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                {rolLabel[usuario?.rol || ''] || usuario?.rol || ''}
-                {usuario?.area && ` · ${usuario.area}`}
-              </div>
-            </div>
-            <div className="text-[10px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                Cerrar sesión
-              </div>
-            <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>↗</span>
-          </button>
-        </div>
+        {/* Notaría AI */}
+        <a href="/notaria-ai" style={{ ...estiloFila(esActivo('/notaria-ai')), marginTop: 8 }} title={abierto ? undefined : 'Notaría AI'}>
+          <span style={cajaIcono}>
+            <span style={{
+              width: 36, height: 36, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+              background: 'linear-gradient(135deg, #7c5cff, #e05aa8)', boxShadow: '0 4px 14px rgba(160,90,255,0.4)',
+            }}>
+              <Icono nombre="ai" size={18} />
+            </span>
+          </span>
+          <span style={{ ...etiqueta, lineHeight: 1.2 }}>
+            <b style={{ display: 'block', fontSize: 13, color: '#fff' }}>Notaría AI</b>
+            <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>Expedientes y dudas notariales</span>
+          </span>
+        </a>
+
+        {/* Usuario */}
+        <button
+          onClick={() => setModalLogout(true)}
+          style={{ ...filaBase, height: 52, marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.07)', borderRadius: 0, background: 'transparent', color: '#fff' }}
+          title={abierto ? undefined : 'Cerrar sesión'}
+        >
+          <span style={cajaIcono}>
+            <span style={{
+              width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 900, color: '#000', background: 'linear-gradient(145deg, #B8820A, #F0C040)',
+            }}>{usuario?.letras || 'US'}</span>
+          </span>
+          <span style={{ ...etiqueta, lineHeight: 1.25 }}>
+            <b style={{ display: 'block', fontSize: 12.5, color: 'rgba(255,255,255,0.85)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {usuario?.nombre || 'Usuario'}
+            </b>
+            <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)' }}>
+              {ROL_LABEL[usuario?.rol || ''] || usuario?.rol || ''}{usuario?.area ? ` · ${usuario.area}` : ''}
+            </span>
+          </span>
+          {abierto && <span style={{ marginRight: 8, color: 'rgba(255,255,255,0.45)', display: 'flex' }}><Icono nombre="salir" size={17} /></span>}
+        </button>
       </aside>
 
-      {/* Agrega el modal al final del aside, antes del cierre: */}
       {modalEliminar && (
         <ModalConfirm
           titulo={`Eliminar "${modalEliminar.nombre}"`}
@@ -307,10 +390,7 @@ export default function Sidebar() {
           peligroso
           onCancel={() => setModalEliminar(null)}
           onConfirm={async () => {
-            const res = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL}/api/tramites/${modalEliminar.id}`,
-              { method: 'DELETE' }
-            )
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tramites/${modalEliminar.id}`, { method: 'DELETE' })
             if (res.ok) {
               setTramites(prev => prev.filter(x => x.id !== modalEliminar.id))
               if (activeTramiteId === modalEliminar.id) window.location.href = '/'
@@ -322,49 +402,33 @@ export default function Sidebar() {
           }}
         />
       )}
-      {modalLogout && (
-        <div className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>
-          <div className="rounded-2xl w-full max-w-xs mx-4 overflow-hidden"
-            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}>
 
-            {/* Header */}
+      {modalLogout && (
+        <div className="fixed inset-0 flex items-center justify-center z-[60]"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setModalLogout(false)}>
+          <div className="rounded-2xl w-full max-w-xs mx-4 overflow-hidden"
+            style={{ background: '#fff', boxShadow: '0 24px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-4">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: '#F7F7F5' }}>
-                <span className="text-[24px]">👋</span>
-              </div>
-              <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>
-                ¿Cerrar sesión?
-              </div>
+              <div className="text-[16px] font-bold mb-1" style={{ color: '#111' }}>¿Cerrar sesión?</div>
               <div className="text-[13px]" style={{ color: '#9C9890' }}>
                 Se cerrará tu sesión en este dispositivo. Puedes volver a entrar con tu correo.
               </div>
             </div>
-
-            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
-
-            <div className="flex gap-3 px-6 py-4">
+            <div className="flex gap-3 px-6 py-4" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
               <button onClick={() => setModalLogout(false)}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold cursor-pointer border-none"
-                style={{ background: '#F3F4F6', color: '#444' }}>
-                Cancelar
-              </button>
+                style={{ background: '#F3F4F6', color: '#444' }}>Cancelar</button>
               <button onClick={handleLogout}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border-none"
-                style={{ background: '#111', color: '#fff' }}>
-                Sí, cerrar sesión
-              </button>
+                style={{ background: '#111', color: '#fff' }}>Cerrar sesión</button>
             </div>
           </div>
         </div>
       )}
-      {modalSinAcceso && (
-        <ModalSinAcceso
-          accion={modalSinAcceso}
-          onCerrar={() => setModalSinAcceso(null)}
-        />
-      )}
+
+      {modalSinAcceso && <ModalSinAcceso accion={modalSinAcceso} onCerrar={() => setModalSinAcceso(null)} />}
     </div>
   )
 }
