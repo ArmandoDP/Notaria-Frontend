@@ -41,7 +41,19 @@ export default function TicketAlertas({ documentos, ticket, apiUrl, conversacion
             body: JSON.stringify({ telefono, mensaje: msg, conversacion_id: null }),
           })
       if (res.status === 409) {
-        avisar('Pasaron más de 24 h desde el último mensaje del cliente. Usa "Enviar recordatorio".', true)
+        // Ventana cerrada: se manda la plantilla "documentos" para que el cliente responda
+        const r2 = await fetch(`${apiUrl}/api/meta/plantilla-ticket`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticket.id, plantilla: 'documentos' }),
+        })
+        if (!r2.ok) {
+          const err = await r2.json().catch(() => ({}))
+          avisar(typeof err.detail === 'object' ? err.detail.mensaje : err.detail || 'No se pudo enviar la plantilla de documentos', true)
+          return
+        }
+        setEnviados(prev => [...prev, doc.id])
+        avisar('El cliente no había escrito en 24 h: se le envió la plantilla "Documentos" para que responda')
         return
       }
       if (!res.ok) {

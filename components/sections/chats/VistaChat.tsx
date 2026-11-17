@@ -19,6 +19,11 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
   const [cargando, setCargando] = useState(true)
   const [respondiendo, setRespondiendo] = useState<any | null>(null)
   const [ahora, setAhora] = useState(Date.now())
+  const [editando, setEditando] = useState(false)
+  const [formNombre, setFormNombre] = useState('')
+  const [formTel, setFormTel] = useState('')
+  const [guardandoContacto, setGuardandoContacto] = useState(false)
+  const [errorContacto, setErrorContacto] = useState<string | null>(null)
   const threadRef = useRef<HTMLDivElement>(null)
   const pegadoAbajo = useRef(true)
 
@@ -76,6 +81,37 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
     if (el && pegadoAbajo.current) el.scrollTop = el.scrollHeight
   }, [mensajes])
 
+  // ─── Editar contacto ───
+  function abrirEdicion() {
+    setFormNombre(conversacion.nombre && conversacion.nombre !== conversacion.telefono ? conversacion.nombre : '')
+    setFormTel((conversacion.telefono || '').replace(/\D/g, '').slice(-10))
+    setErrorContacto(null)
+    setEditando(true)
+  }
+
+  async function guardarContacto() {
+    const digitos = formTel.replace(/\D/g, '').slice(-10)
+    if (digitos.length !== 10) { setErrorContacto('El teléfono debe tener 10 dígitos.'); return }
+    const telefono = `+52${digitos}`
+    setGuardandoContacto(true)
+    setErrorContacto(null)
+    if (telefono !== conversacion.telefono) {
+      const { data: otra } = await supabase.from('conversaciones_wa').select('id, nombre')
+        .eq('telefono', telefono).eq('area_id', conversacion.area_id).eq('activa', true).neq('id', conversacion.id).limit(1)
+      if (otra && otra.length) {
+        setGuardandoContacto(false)
+        setErrorContacto(`Ese número ya tiene otra conversación en esta área (${otra[0].nombre || telefono}).`)
+        return
+      }
+    }
+    const { error } = await supabase.from('conversaciones_wa')
+      .update({ nombre: formNombre.trim() || telefono, telefono })
+      .eq('id', conversacion.id)
+    setGuardandoContacto(false)
+    if (error) { setErrorContacto(`No se pudo guardar: ${error.message}`); return }
+    setEditando(false)
+  }
+
   const ultimoEntrante = useMemo(() => {
     const ultimoMsg = [...mensajes].reverse().find(m => m.direccion === 'entrante')?.created_at
     const candidatos = [ultimoMsg, conversacion.ultimo_entrante_at].filter(Boolean) as string[]
@@ -104,7 +140,12 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
           {iniciales(conversacion.nombre)}
         </div>
         <div className={s.who}>
-          <b>{nombreCliente}</b>
+          <b>
+            {nombreCliente}
+            <button type="button" className={s.editBtn} onClick={abrirEdicion} title="Editar contacto" aria-label="Editar contacto">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+            </button>
+          </b>
           <span>{conversacion.telefono}{area ? ` · ${area.nombre}` : ''}</span>
         </div>
 
@@ -158,6 +199,42 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
           <div className={s.sys}>La ventana de 24 h está cerrada · solo se pueden enviar plantillas aprobadas</div>
         )}
       </div>
+
+      {editando && (
+        <div className={s.overlay} onClick={() => !guardandoContacto && setEditando(false)}>
+          <div className={s.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className={s.modalHead}>
+              <div>
+                <b>Editar contacto</b>
+                <span>Corrige el nombre o el número del cliente</span>
+              </div>
+              <button className={s.roundBtn} onClick={() => setEditando(false)} aria-label="Cerrar">✕</button>
+            </div>
+            <div className={s.modalBody}>
+              <div className={s.field}>
+                <label htmlFor="ed-nombre">Nombre</label>
+                <input id="ed-nombre" value={formNombre} onChange={e => setFormNombre(e.target.value)} placeholder="Nombre del cliente" autoFocus />
+              </div>
+              <div className={s.field}>
+                <label htmlFor="ed-tel">Teléfono (10 dígitos)</label>
+                <input id="ed-tel" value={formTel} onChange={e => setFormTel(e.target.value)} inputMode="tel" placeholder="4611234567" />
+              </div>
+              {formTel.replace(/\D/g, '').slice(-10) !== (conversacion.telefono || '').replace(/\D/g, '').slice(-10) && (
+                <div className={s.aviso}>
+                  Al cambiar el número, los mensajes nuevos se mandarán al número corregido. El historial se queda en esta conversación.
+                </div>
+              )}
+              {errorContacto && <div className={s.errorText}>{errorContacto}</div>}
+            </div>
+            <div className={s.modalFoot}>
+              <button className={s.btnGhost} onClick={() => setEditando(false)} disabled={guardandoContacto}>Cancelar</button>
+              <button className={s.btnGreen} onClick={guardarContacto} disabled={guardandoContacto}>
+                {guardandoContacto ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Composer
         conversacion={conversacion}

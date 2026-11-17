@@ -225,3 +225,30 @@
   .thread { padding: 18px 4%; }
   .msg { max-width: 85%; }
 }
+
+/* ── Formulario de plantillas (5 plantillas nuevas) ── */
+.tplPills { display: flex; gap: 6px; flex-wrap: wrap; }
+.tplPill { border: 1.5px solid var(--divider); background: var(--bg-panel); color: var(--ink-soft); font: inherit; font-size: 0.8rem; font-weight: 700; padding: 7px 14px; border-radius: 999px; cursor: pointer; transition: border-color 0.2s, background 0.2s, color 0.2s, transform 0.15s; }
+.tplPill:hover { border-color: var(--green); color: var(--green-deep); }
+.tplPill:active { transform: scale(0.97); }
+.tplPillOn { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+.tplPillOn:hover { color: #fff; }
+.tplGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.tplLabel { display: block; font-size: 0.72rem; font-weight: 700; color: var(--ink-soft); margin-bottom: 5px; }
+.tplInput { width: 100%; border: 1.5px solid var(--divider); border-radius: 10px; padding: 9px 11px; font: inherit; font-size: 0.86rem; color: var(--ink); outline: none; background: #fff; transition: border-color 0.2s; }
+.tplInput:focus { border-color: var(--green); }
+select.tplInput { appearance: none; cursor: pointer; padding-right: 30px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2354656f' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center; }
+.tplHint { font-size: 0.7rem; color: var(--ink-faint); margin-top: 4px; }
+.previewWrap { margin-top: 12px; padding: 14px; border-radius: 12px; background: var(--bg-chatarea); }
+.previewBubble { max-width: 92%; margin-left: auto; background: var(--bubble-out); border-radius: 12px 12px 4px 12px; padding: 9px 12px; font-size: 0.84rem; line-height: 1.45; white-space: pre-wrap; box-shadow: 0 1px 1px rgba(11, 20, 26, 0.09); animation: pop 0.25s ease-out; }
+.previewBubble b { font-weight: 700; }
+.previewBtns { max-width: 92%; margin-left: auto; display: flex; flex-direction: column; gap: 3px; margin-top: 3px; }
+.previewBtn { background: var(--bubble-out); border-radius: 8px; padding: 8px; text-align: center; font-size: 0.8rem; font-weight: 600; color: #027eb5; box-shadow: 0 1px 1px rgba(11, 20, 26, 0.09); }
+.tplFoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.tplFoot small { font-size: 0.72rem; color: var(--ink-soft); flex: 1; min-width: 180px; }
+.modalWide { max-width: 560px; }
+.modalScroll { max-height: calc(100vh - 180px); overflow-y: auto; }
+.editBtn { border: none; background: none; color: var(--ink-faint); cursor: pointer; padding: 3px; border-radius: 6px; display: inline-flex; vertical-align: middle; margin-left: 4px; transition: color 0.2s, background 0.2s; }
+.editBtn:hover { color: var(--ink); background: var(--hover); }
+.errorText { color: var(--danger); font-size: 0.78rem; font-weight: 600; margin-top: 8px; }
+@media (max-width: 640px) { .tplGrid { grid-template-columns: 1fr; } }

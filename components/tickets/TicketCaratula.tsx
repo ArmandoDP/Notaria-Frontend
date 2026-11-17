@@ -51,13 +51,14 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   const [modalLink,      setModalLink]      = useState(false)
   const [modalLinkParte, setModalLinkParte] = useState<{ url: string; rolLabel: string } | null>(null)
   const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null)
+  const [usuarioNombre,   setUsuarioNombre]   = useState('')
   const [validandoDoc,   setValidandoDoc]   = useState<{ docId: string; nombreDoc: string } | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }: any) => {
       if (!user) return
-      const { data } = await supabase.from('usuarios_sistema').select('id').eq('email', user.email || '').single()
-      if (data) setUsuarioActualId(data.id)
+      const { data } = await supabase.from('usuarios_sistema').select('id, nombre').eq('email', user.email || '').single()
+      if (data) { setUsuarioActualId(data.id); setUsuarioNombre(data.nombre || '') }
     })
   }, [])
 
@@ -203,13 +204,17 @@ export default function TicketCaratula({ ticket, tramites, areas, conversacionId
   }
 
   async function enviarRecordatorio() {
+    // Plantilla "recordatorio_2": {{1}} = área del ticket, {{2}} = quien tiene la sesión.
+    // Si el cliente escribió en las últimas 24 h, se manda como mensaje normal (sin costo).
     try {
-      const res  = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/twilio/recordatorio`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket_id: ticket.id }),
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/meta/plantilla-ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticket.id, plantilla: 'recordatorio_2', asesor: usuarioNombre || null }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) mostrar(`Recordatorio enviado a ${data.telefono || 'el cliente'}`)
-      else mostrar(data.detail || 'No se pudo enviar el recordatorio', true)
+      else mostrar(typeof data.detail === 'object' ? data.detail.mensaje : data.detail || 'No se pudo enviar el recordatorio', true)
     } catch {
       mostrar('No hay conexión con el servidor', true)
     }

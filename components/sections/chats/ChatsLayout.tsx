@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import s from './wa.module.css'
 import ListaConversaciones from './ListaConversaciones'
+import FormPlantilla from './FormPlantilla'
 import VistaChat from './VistaChat'
 import { apiPost, calcularVentana, ApiError } from './waUtils'
 
@@ -36,7 +37,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
   const [modalNueva, setModalNueva] = useState(false)
   const [nuevoTelefono, setNuevoTelefono] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
-  const [iniciando, setIniciando] = useState(false)
+  const [areaEnvioId, setAreaEnvioId] = useState<string>('')
   const [errorNueva, setErrorNueva] = useState<string | null>(null)
 
   // Refs para usar el estado más reciente dentro del canal de tiempo real
@@ -115,28 +116,38 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
     ? conversaciones.find(c => (c.telefono || '').replace(/\D/g, '').endsWith(digitosNuevo))
     : null
 
-  async function iniciarConversacion() {
-    if (digitosNuevo.length !== 10 || iniciando) return
-    setIniciando(true); setErrorNueva(null)
+  async function iniciarConversacion(plantilla: string, parametros: string[]) {
+    if (digitosNuevo.length !== 10) return
+    setErrorNueva(null)
     try {
       const conv = await apiPost('/api/meta/nueva-conversacion', {
         telefono: nuevoTelefono,
         nombre: nuevoNombre.trim() || null,
-        area_id: usuarioAreaId,
+        area_id: areaEnvioId || null,
+        plantilla,
+        parametros,
       })
-      setConversaciones(prev => ordenar([conv, ...prev.filter(c => c.id !== conv.id)]))
-      setConvSeleccionada(conv)
+      const { enviado_como, ...fila } = conv
+      setConversaciones(prev => ordenar([fila, ...prev.filter(c => c.id !== fila.id)]))
+      setConvSeleccionada(fila)
       cerrarModal()
     } catch (e) {
       setErrorNueva(e instanceof ApiError ? e.message : 'No se pudo iniciar la conversación')
-    } finally {
-      setIniciando(false)
     }
   }
 
   function cerrarModal() {
     setModalNueva(false); setNuevoTelefono(''); setNuevoNombre(''); setErrorNueva(null)
   }
+
+  // Área desde la que se envía (su número de WhatsApp): la del usuario o Recepción
+  function abrirNueva() {
+    const delUsuario = areas.find((a: any) => a.id === usuarioAreaId)
+    const recepcion = areas.find((a: any) => a.nombre === 'Recepción')
+    setAreaEnvioId((delUsuario || recepcion || areas[0])?.id || '')
+    setModalNueva(true)
+  }
+  const areaEnvio = areas.find((a: any) => a.id === areaEnvioId)
 
   // ─── Filtros ───
   const ahora = Date.now()
@@ -182,7 +193,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z" /><path d="M8 7h8M8 11h6" /></svg>
             </button>
-            <button className={s.roundBtn} onClick={() => setModalNueva(true)} title="Nueva conversación">
+            <button className={s.roundBtn} onClick={abrirNueva} title="Nueva conversación">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.5 8.5 0 1 1 21 11.5z" /><path d="M12 8v7M8.5 11.5h7" /></svg>
             </button>
           </div>
@@ -272,25 +283,32 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
       {/* ── Modal nueva conversación ── */}
       {modalNueva && (
         <div className={s.overlay} onClick={cerrarModal}>
-          <div className={s.modal} onClick={e => e.stopPropagation()}>
+          <div className={`${s.modal} ${s.modalWide}`} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className={s.modalHead}>
               <div>
                 <b>Nueva conversación</b>
-                <span>Se enviará la plantilla de apertura de tu área</span>
+                <span>Elige la plantilla, revísala y envíala</span>
               </div>
               <button className={s.roundBtn} onClick={cerrarModal} aria-label="Cerrar">✕</button>
             </div>
-            <div className={s.modalBody}>
+            <div className={`${s.modalBody} ${s.modalScroll}`}>
+              <div className={s.tplGrid} style={{ marginTop: 0 }}>
+                <div className={s.field}>
+                  <label htmlFor="nuevo-tel">Número de WhatsApp</label>
+                  <input id="nuevo-tel" value={nuevoTelefono} onChange={e => setNuevoTelefono(e.target.value)}
+                    placeholder="4611234567" inputMode="tel" autoFocus />
+                </div>
+                <div className={s.field}>
+                  <label htmlFor="nuevo-nombre">Nombre del cliente <span style={{ fontWeight: 500 }}>(opcional)</span></label>
+                  <input id="nuevo-nombre" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} placeholder="Juan García" />
+                </div>
+              </div>
+
               <div className={s.field}>
-                <label htmlFor="nuevo-tel">Número de WhatsApp</label>
-                <input
-                  id="nuevo-tel"
-                  value={nuevoTelefono}
-                  onChange={e => setNuevoTelefono(e.target.value)}
-                  placeholder="4611234567"
-                  inputMode="tel"
-                  autoFocus
-                />
+                <label htmlFor="nuevo-desde">Enviar desde el WhatsApp de</label>
+                <select id="nuevo-desde" className={s.tplInput} value={areaEnvioId} onChange={e => setAreaEnvioId(e.target.value)}>
+                  {areas.filter((a: any) => a.numero_twilio).map((a: any) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                </select>
               </div>
 
               {convExistente && (
@@ -298,34 +316,25 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
                   Este número ya tiene una conversación con {convExistente.nombre || convExistente.telefono}
                   {convExistente.areas ? ` en ${convExistente.areas.nombre}` : ''}.
                   <div>
-                    <button
-                      className={s.btnGhost}
-                      onClick={() => { setConvSeleccionada(convExistente); cerrarModal() }}
-                    >
+                    <button className={s.btnGhost} onClick={() => { setConvSeleccionada(convExistente); cerrarModal() }}>
                       Abrir conversación
                     </button>
                   </div>
                 </div>
               )}
 
-              <div className={s.field}>
-                <label htmlFor="nuevo-nombre">Nombre del cliente (opcional)</label>
-                <input
-                  id="nuevo-nombre"
-                  value={nuevoNombre}
-                  onChange={e => setNuevoNombre(e.target.value)}
-                  placeholder="Juan García"
-                  onKeyDown={e => e.key === 'Enter' && iniciarConversacion()}
-                />
-              </div>
+              <FormPlantilla
+                areaInicial={areaEnvio?.nombre || null}
+                textoBoton="Iniciar conversación"
+                bloqueado={digitosNuevo.length !== 10}
+                nota={digitosNuevo.length !== 10
+                  ? 'Escribe el número a 10 dígitos para poder enviar.'
+                  : 'Si el cliente escribió en las últimas 24 h, se manda como mensaje normal (sin costo); si no, como plantilla.'}
+                onError={msg => setErrorNueva(msg)}
+                onEnviar={iniciarConversacion}
+              />
 
-              {errorNueva && <div className={s.errorBar} style={{ margin: 0 }}>{errorNueva}</div>}
-            </div>
-            <div className={s.modalFoot}>
-              <button className={s.btnGhost} onClick={cerrarModal}>Cancelar</button>
-              <button className={s.btnGreen} disabled={digitosNuevo.length !== 10 || iniciando} onClick={iniciarConversacion}>
-                {iniciando ? 'Enviando…' : 'Iniciar conversación'}
-              </button>
+              {errorNueva && <div className={s.errorBar} style={{ margin: '10px 0 0' }}>{errorNueva}</div>}
             </div>
           </div>
         </div>

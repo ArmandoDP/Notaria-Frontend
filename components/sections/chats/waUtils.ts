@@ -87,8 +87,39 @@ export function tamanoLegible(bytes?: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const NOMBRES_PLANTILLA: Record<string, string> = {
+  apertura:       'Apertura',
+  recordatorio_2: 'Recordatorio',
+  reactivar_2:    'Reactivar',
+  confirmacion_2: 'Confirmación',
+  documentos:     'Documentos',
+}
 export function nombrePlantilla(nombre: string) {
-  return nombre.replace(/^notaria3_/, '').replace(/_hx[0-9a-f]+$/i, '').replace(/_/g, ' ')
+  if (NOMBRES_PLANTILLA[nombre]) return NOMBRES_PLANTILLA[nombre]
+  const limpio = nombre.replace(/^notaria3_/, '').replace(/_hx[0-9a-f]+$/i, '').replace(/_\d+$/, '').replace(/_/g, ' ')
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1)
+}
+
+// Áreas para la variable {{1}} de las plantillas (hoja "Variables y áreas" de Arturo)
+export const AREAS_PLANTILLA = [
+  'Recepción', 'Atención al Cliente', 'Jurídico 1', 'Jurídico 2', 'Jurídico 4', 'Jurídico 6',
+  'Testamentos', 'Notario Auxiliar', 'Corporativo', 'Desarrollos', 'Fraccionamientos', 'Folios', 'Administrativo',
+]
+
+// Usuario con sesión (para firmar las plantillas con {{2}})
+let usuarioCache: { nombre: string; area_id: string | null } | null = null
+export function useUsuarioActual() {
+  const [usuario, setUsuario] = useState(usuarioCache)
+  useEffect(() => {
+    if (usuarioCache) return
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }: any) => {
+      if (!user) return
+      const { data } = await supabase.from('usuarios_sistema').select('nombre, area_id').eq('email', user.email || '').single()
+      if (data) { usuarioCache = { nombre: data.nombre || '', area_id: data.area_id || null }; setUsuario(usuarioCache) }
+    })
+  }, [])
+  return usuario
 }
 
 // ─── Ventana de 24 h ────────────────────────────────────────────────────────
