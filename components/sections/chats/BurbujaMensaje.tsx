@@ -143,11 +143,28 @@ function Ubicacion({ u }: { u: any }) {
   )
 }
 
-export default function BurbujaMensaje({ m, citado, nombreCliente, onResponder }: Props) {
+interface Acciones {
+  seleccionando?: boolean
+  seleccionado?:  boolean
+  onSeleccionar?: (m: any) => void
+  onReenviar?:    (m: any) => void
+}
+
+export default function BurbujaMensaje({ m, citado, nombreCliente, onResponder, seleccionando, seleccionado, onSeleccionar, onReenviar }: Props & Acciones) {
+  const [menu, setMenu] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const entrante = m.direccion === 'entrante'
   const tipo = m.tipo || 'text'
   const esSticker = tipo === 'sticker'
   const texto = tipo === 'location' ? '' : (m.contenido || '')
+
+  // Cerrar el menú al dar clic fuera
+  useEffect(() => {
+    if (!menu) return
+    const fuera = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false) }
+    document.addEventListener('mousedown', fuera)
+    return () => document.removeEventListener('mousedown', fuera)
+  }, [menu])
 
   const clases = [
     s.msg,
@@ -156,16 +173,62 @@ export default function BurbujaMensaje({ m, citado, nombreCliente, onResponder }
     m.reaccion ? s.withReaction : '',
   ].join(' ')
 
-  const botonResponder = m.wa_message_id ? (
-    <button className={s.replyBtn} onClick={() => onResponder(m)} title="Responder">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v4" /></svg>
-    </button>
-  ) : null
+  function copiar() {
+    navigator.clipboard?.writeText(texto || m.media_nombre || '')
+    setMenu(false)
+  }
+
+  const filaClases = [s.row, entrante ? s.rowIn : s.rowOut, seleccionando ? s.rowSel : '', seleccionado ? s.rowPicked : ''].join(' ')
 
   return (
-    <div className={`${s.row} ${entrante ? s.rowIn : s.rowOut}`}>
-      {!entrante && botonResponder}
-      <div className={clases}>
+    <div className={filaClases} onClick={seleccionando ? () => onSeleccionar?.(m) : undefined}>
+      {seleccionando && (
+        <span className={`${s.selDot} ${seleccionado ? s.selDotOn : ''}`} style={{ marginRight: entrante ? 6 : 'auto' }}>
+          {seleccionado && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
+        </span>
+      )}
+      <div className={clases} ref={menuRef}>
+        {!seleccionando && (
+          <button type="button" className={`${s.msgMenuBtn} ${menu ? s.msgMenuBtnOn : ''}`} onClick={e => { e.stopPropagation(); setMenu(v => !v) }} aria-label="Opciones del mensaje">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        )}
+        {menu && (
+          <div className={s.msgMenu} role="menu">
+            {m.wa_message_id && (
+              <button type="button" onClick={() => { setMenu(false); onResponder(m) }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v4" /></svg>
+                Responder
+              </button>
+            )}
+            {onReenviar && (
+              <button type="button" onClick={() => { setMenu(false); onReenviar(m) }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 0 0-6 6v4" /></svg>
+                Reenviar
+              </button>
+            )}
+            {(texto || m.media_nombre) && (
+              <button type="button" onClick={copiar}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                Copiar texto
+              </button>
+            )}
+            {onSeleccionar && (
+              <button type="button" onClick={() => { setMenu(false); onSeleccionar(m) }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg>
+                Seleccionar
+              </button>
+            )}
+          </div>
+        )}
+
+        {m.reenviado && (
+          <span className={s.fwdTag}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 0 0-6 6v4" /></svg>
+            Reenviado
+          </span>
+        )}
+
         {citado && (
           <div className={s.quote}>
             <b>{citado.direccion === 'entrante' ? nombreCliente : 'Notaría'}</b>
@@ -191,7 +254,6 @@ export default function BurbujaMensaje({ m, citado, nombreCliente, onResponder }
         {m.estado === 'fallido' && <span className={s.failNote}>No entregado{m.error ? `: ${m.error}` : ''}</span>}
         {m.reaccion && <span className={s.reaction}>{m.reaccion}</span>}
       </div>
-      {entrante && botonResponder}
     </div>
   )
 }

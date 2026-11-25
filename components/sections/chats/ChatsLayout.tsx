@@ -269,6 +269,7 @@ export default function ChatsLayout({ conversacionesIniciales, areas }: Props) {
           <VistaChat
             key={convSeleccionada.id}
             conversacion={convSeleccionada}
+            conversaciones={conversaciones}
             onCambiarEstatus={estatus => cambiarEstatus(convSeleccionada.id, estatus)}
           />
         ) : (

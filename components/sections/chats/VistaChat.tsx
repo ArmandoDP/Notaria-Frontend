@@ -4,22 +4,31 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import s from './wa.module.css'
 import BurbujaMensaje from './BurbujaMensaje'
-import Composer from './Composer'
+import Composer, { ComposerHandle } from './Composer'
+import ModalReenviar from './ModalReenviar'
 import { calcularVentana, etiquetaDia, iniciales, apiPost, ESTATUS_CONFIG } from './waUtils'
 
 interface Props {
   conversacion: any
+  conversaciones?: any[]
   onMensajeEnviado?: () => void
   onCambiarEstatus: (estatus: string) => void
 }
 
-export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
+export default function VistaChat({ conversacion, conversaciones = [], onCambiarEstatus }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [mensajes, setMensajes] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
   const [respondiendo, setRespondiendo] = useState<any | null>(null)
   const [ahora, setAhora] = useState(Date.now())
   const [editando, setEditando] = useState(false)
+  const [seleccion, setSeleccion] = useState<string[]>([])
+  const [seleccionando, setSeleccionando] = useState(false)
+  const [reenviar, setReenviar] = useState<any[] | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const [arrastrando, setArrastrando] = useState(false)
+  const composerRef = useRef<ComposerHandle>(null)
+  const contadorArrastre = useRef(0)
   const [formNombre, setFormNombre] = useState('')
   const [formTel, setFormTel] = useState('')
   const [guardandoContacto, setGuardandoContacto] = useState(false)
@@ -35,6 +44,7 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
   useEffect(() => {
     let vivo = true
     setMensajes([]); setCargando(true); setRespondiendo(null); pegadoAbajo.current = true
+    setSeleccion([]); setSeleccionando(false); setReenviar(null)
     supabase.from('mensajes_wa').select('*')
       .eq('conversacion_id', conversacion.id)
       .order('created_at', { ascending: true })
@@ -80,6 +90,41 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
     const el = threadRef.current
     if (el && pegadoAbajo.current) el.scrollTop = el.scrollHeight
   }, [mensajes])
+
+  // ─── Selección y reenvío ───
+  function alternarSeleccion(m: any) {
+    setSeleccionando(true)
+    setSeleccion(prev => (prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id]))
+  }
+  function salirSeleccion() { setSeleccionando(false); setSeleccion([]) }
+  function mostrarAviso(t: string) { setAviso(t); setTimeout(() => setAviso(null), 2600) }
+  useEffect(() => {
+    if (!seleccionando) return
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape' && !reenviar) salirSeleccion() }
+    window.addEventListener('keydown', tecla)
+    return () => window.removeEventListener('keydown', tecla)
+  }, [seleccionando, reenviar])
+
+  // ─── Arrastrar archivos sobre el chat ───
+  const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files')
+  function alEntrar(e: React.DragEvent) {
+    if (!traeArchivos(e)) return
+    e.preventDefault()
+    contadorArrastre.current++
+    setArrastrando(true)
+  }
+  function alSalir(e: React.DragEvent) {
+    if (!traeArchivos(e)) return
+    contadorArrastre.current = Math.max(0, contadorArrastre.current - 1)
+    if (!contadorArrastre.current) setArrastrando(false)
+  }
+  function alSoltar(e: React.DragEvent) {
+    if (!traeArchivos(e)) return
+    e.preventDefault()
+    contadorArrastre.current = 0
+    setArrastrando(false)
+    composerRef.current?.agregarArchivos(Array.from(e.dataTransfer.files || []))
+  }
 
   // ─── Editar contacto ───
   function abrirEdicion() {
@@ -170,9 +215,22 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
         )}
       </header>
 
+      {arrastrando && (
+        <div className={s.dropChat}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+          Suelta para enviar
+          <span>Podrás revisarlos y agregar un comentario antes de enviarlos</span>
+        </div>
+      )}
+      {aviso && <div className={s.toastChat}>{aviso}</div>}
+
       <div
         className={s.thread}
         ref={threadRef}
+        onDragEnter={alEntrar}
+        onDragLeave={alSalir}
+        onDragOver={e => traeArchivos(e) && e.preventDefault()}
+        onDrop={alSoltar}
         onScroll={e => {
           const el = e.currentTarget
           pegadoAbajo.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -191,6 +249,10 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
               citado={f.m.responde_a ? porWamid.get(f.m.responde_a) : undefined}
               nombreCliente={nombreCliente}
               onResponder={setRespondiendo}
+              seleccionando={seleccionando}
+              seleccionado={seleccion.includes(f.m.id)}
+              onSeleccionar={alternarSeleccion}
+              onReenviar={m => setReenviar([m])}
             />
           )
         )}
@@ -236,12 +298,38 @@ export default function VistaChat({ conversacion, onCambiarEstatus }: Props) {
         </div>
       )}
 
-      <Composer
-        conversacion={conversacion}
-        ventanaAbierta={ventana.estado !== 'closed'}
-        respondiendo={respondiendo}
-        onCancelarRespuesta={() => setRespondiendo(null)}
-      />
+      {seleccionando ? (
+        <div className={s.selBar}>
+          <button className={s.roundBtn} onClick={salirSeleccion} aria-label="Cancelar selección">✕</button>
+          <b>{seleccion.length} seleccionado{seleccion.length !== 1 ? 's' : ''}</b>
+          <button className={s.btnGreen} disabled={!seleccion.length}
+            onClick={() => setReenviar(mensajes.filter(m => seleccion.includes(m.id)))}>
+            Reenviar
+          </button>
+        </div>
+      ) : (
+        <Composer
+          ref={composerRef}
+          conversacion={conversacion}
+          ventanaAbierta={ventana.estado !== 'closed'}
+          respondiendo={respondiendo}
+          onCancelarRespuesta={() => setRespondiendo(null)}
+        />
+      )}
+
+      {reenviar && (
+        <ModalReenviar
+          mensajes={reenviar}
+          conversaciones={conversaciones}
+          onClose={() => setReenviar(null)}
+          onListo={() => {
+            const n = reenviar.length
+            setReenviar(null)
+            salirSeleccion()
+            mostrarAviso(n === 1 ? 'Mensaje reenviado' : `${n} mensajes reenviados`)
+          }}
+        />
+      )}
     </>
   )
 }
